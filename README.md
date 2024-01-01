@@ -1,10 +1,9 @@
 # FLEX
-> a Modeling Suite for Households' Behavior, Energy System Operation, and Interaction in the Energy Community
 
 ## Overview
 
-FLEX is a modeling suite for the operation and energy consumption of households and energy communities.
-Currently, FLEX is developed by 
+FLEX is a modeling suite for households' behavior, energy system operation, and interaction in the energy community.
+It is developed by 
 [Fraunhofer ISI](https://www.isi.fraunhofer.de/) and 
 [TU Wien (Energy Economics Group)](https://eeg.tuwien.ac.at/)
 in the framework of the H2020 project [newTRENDs](https://newTRENDs2020.eu/).
