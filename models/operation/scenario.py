@@ -50,6 +50,7 @@ class OperationScenario:
         scenario_df = self.input_tables[InputTables.OperationScenario.name]
         scenario_df = scenario_df.set_index("ID_Scenario", drop=True)
         component_scenario_ids: dict = scenario_df.loc[scenario_df.index == self.scenario_id, :].to_dict()
+        component_scenario_ids = {key: value for key, value in component_scenario_ids.items() if key.startswith('ID')}
         return component_scenario_ids
 
     def setup_components(self):
