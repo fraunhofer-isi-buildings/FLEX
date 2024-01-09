@@ -66,13 +66,13 @@ def copy_household_ref_hour(
 
 
 def run_flex_community_model(project_name: str):
-    config = Config(project_name=project_name)
+    config = Config(project_name=project_name, project_path=os.path.dirname(__file__))
     init_project_db(config)
     run_community_model(config)
 
 
 def run_flex_community_plotter(project_name: str):
-    config = Config(project_name=project_name)
+    config = Config(project_name=project_name, project_path=os.path.dirname(__file__))
     aggregator_profit(config)
     p2p_trading_amount(config, id_scenario=1)
     battery_operation(config, id_scenario=1)

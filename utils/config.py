@@ -1,21 +1,20 @@
-import logging
 import os
 
 
 class Config:
 
-    def __init__(self, project_name: str):
+    def __init__(self, project_name: str, project_path: str):
         self.root = os.path.abspath(os.curdir)
         self.project_name: str = project_name
+        self.project_path: str = project_path
         self.input = self.create_folder("input")
         self.output = self.create_folder("output")
         self.figure = self.create_folder("output/figure")
         self.task_id = None
         self.task_output = None
-        # self.config_logging()
 
-    @staticmethod
-    def create_folder(path: str):
+    def create_folder(self, path: str):
+        path = os.path.join(self.project_path, path)
         if not os.path.exists(path):
             os.makedirs(path)
         return path
@@ -26,10 +25,6 @@ class Config:
         if not os.path.exists(self.task_output):
             os.makedirs(self.task_output)
         return self
-
-    @staticmethod
-    def config_logging():
-        logging.getLogger("pyomo.core").setLevel(logging.ERROR)
 
     def make_copy(self) -> "Config":
         rk = self.__class__(self.project_name)
