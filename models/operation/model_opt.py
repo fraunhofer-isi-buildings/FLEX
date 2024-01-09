@@ -643,7 +643,7 @@ class OptConfig:
             if self.scenario.boiler.type not in ['Air_HP', 'Ground_HP', "Electric"]:
                 instance.FuelPrice[t] = self.scenario.energy_price.__dict__[self.scenario.boiler.type][t - 1]
             else:
-                instance.FuelPrice[t] = self.scenario.energy_price.gases[t - 1]
+                instance.FuelPrice[t] = 0
 
     def config_grid(self, instance):
         for t in range(1, 8761):
