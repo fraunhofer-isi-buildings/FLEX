@@ -141,6 +141,7 @@ class EnergyPrice(OperationComponent):
     id_gases: Optional[int] = None
     id_district_heating: Optional[int] = None
     id_gasoline: Optional[int] = None
+    id_fuel: Optional[int] = None
     price_unit: Optional[str] = None
     electricity: Optional[np.ndarray] = None
     electricity_feed_in: Optional[np.ndarray] = None
@@ -149,6 +150,7 @@ class EnergyPrice(OperationComponent):
     gases: Optional[np.ndarray] = None
     district_heating: Optional[np.ndarray] = None
     gasoline: Optional[np.ndarray] = None
+    fuel: Optional[np.ndarray] = None
 
 
 @dataclass
