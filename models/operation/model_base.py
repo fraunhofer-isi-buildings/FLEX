@@ -60,7 +60,7 @@ class OperationModel(ABC):
                                                       static=False)
 
     def setup_space_heating_params(self):
-        self.fuel_boiler_efficiency = 0.95  # TODO specify as input??
+        self.fuel_boiler_efficiency = 1  # TODO specify as input??
         self.SpaceHeatingHourlyCOP = self.calc_cop(
             outside_temperature=self.scenario.region.temperature,
             supply_temperature=self.scenario.building.supply_temperature,
