@@ -35,9 +35,9 @@ def household_load_balance(config: "Config", scenario_ids: List[int], models: Op
                 }
                 Plotter(config).bar_figure(
                     values_dict=values_dict,
-                    fig_name=f"HouseholdLoadBalance_{model}S{id_scenario}_{season}",
+                    fig_name=f"HouseholdLoadBalance_{season}_S{id_scenario}_{model}",
                     x_label="Hour",
                     y_label="Electricity Demand and Supply (kW)",
-                    x_lim=None,
-                    y_lim=(-20, 20),
+                    # x_lim=None,
+                    y_lim=(-50, 50),
                 )
