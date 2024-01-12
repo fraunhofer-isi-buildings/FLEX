@@ -44,7 +44,7 @@ They are good starting points for you to understand how to use the models.
 In the "doc" folder, you can find the working paper that comprehensively introduces the FLEX modeling suite. 
 Until it is published, we suggest to use the following citation:
 
-Yu, S.; Mascherbauer, P.; Haupt, T.; Skrona, K.; Rickmann, H.; Kochański, M.; Kranzl, L.; (2023). 
+> Yu, S.; Mascherbauer, P.; Haupt, T.; Skrona, K.; Rickmann, H.; Kochański, M.; Kranzl, L.; (2023). 
 FLEX: a Modeling Suite for Households' Behavior, Energy System Operation, and Interaction in the Energy Community. (Working Paper)
 
 ## Lisence
