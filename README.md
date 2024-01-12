@@ -45,7 +45,7 @@ In the "doc" folder, you can find the working paper that comprehensively introdu
 Until it is published, we suggest to use the following citation:
 
 > Yu, S.; Mascherbauer, P.; Haupt, T.; Skrona, K.; Rickmann, H.; Kochański, M.; Kranzl, L.; (2023). 
-FLEX: a Modeling Suite for Households' Behavior, Energy System Operation, and Interaction in the Energy Community. (Working Paper)
+Modeling households’ behavior, energy system operation, and interaction in the energy community. (Working Paper)
 
 ## Lisence
 
