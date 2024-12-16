@@ -15,7 +15,7 @@ from utils.tables import OutputTables
 
 logger = get_logger(__name__)
 PERSON_SAMPLE_SIZE = 5
-HOUSEHOLD_SAMPLE_SIZE = 5
+HOUSEHOLD_SAMPLE_SIZE = 1
 
 
 def gen_person_profiles(config: "Config"):

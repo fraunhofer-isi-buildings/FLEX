@@ -21,4 +21,4 @@ def run_flex_behavior_plotter(project_name: str):
 
 if __name__ == "__main__":
     run_flex_behavior_model("test_behavior")
-    run_flex_behavior_plotter("test_behavior")
+    # run_flex_behavior_plotter("test_behavior")

@@ -43,16 +43,16 @@ def generate_operation_scenario_table() -> None:
 def run_flex_operation_model(project_name: str):
     config = Config(project_name=project_name, project_path=os.path.dirname(__file__))
     init_project_db(config)
-    run_operation_model(config=config, save_hour=True, scenario_ids=[1])
+    # run_operation_model(config=config, save_hour=True, scenario_ids=[1])
     run_operation_model_parallel(config=config, task_num=8, save_hour=True)
 
 
 def run_flex_operation_plotter(project_name: str):
     config = Config(project_name=project_name, project_path=os.path.dirname(__file__))
-    household_load_balance(config, scenario_ids=[1])
+    household_load_balance(config, scenario_ids=[3])
 
 
 if __name__ == "__main__":
     generate_operation_scenario_table()
-    run_flex_operation_model("test_operation")
+    # run_flex_operation_model("test_operation")
     run_flex_operation_plotter("test_operation")

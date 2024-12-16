@@ -39,5 +39,5 @@ def household_load_balance(config: "Config", scenario_ids: List[int], models: Op
                     x_label="Hour",
                     y_label="Electricity Demand and Supply (kW)",
                     # x_lim=None,
-                    y_lim=(-50, 50),
+                    y_lim=(-20, 20),
                 )
