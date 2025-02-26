@@ -54,11 +54,11 @@ As mentioned, FLEX is developed by
 [TU Wien (Energy Economics Group)](https://eeg.tuwien.ac.at/)
 in the framework of the H2020 project [newTRENDs](https://newTRENDs2020.eu/).
 The developers (2021-2024) include:
-* [Songmin Yu](https://www.isi.fraunhofer.de/en/competence-center/energiepolitik-energiemaerkte/mitarbeiter/yu.html): songmin.yu@isi.fraunhofer.de
+* [Songmin Yu](https://www.isi.fraunhofer.de/en/competence-center/energietechnologien-energiesysteme/mitarbeiter/yu.html): songmin.yu@isi.fraunhofer.de
 * [Philipp Mascherbauer](https://eeg.tuwien.ac.at/staff/people/philipp-mascherbauer): philipp.mascherbauer@tuwien.ac.at
 * [Thomas Haupt](https://www.hs-ansbach.de/personen/haupt-thomas/): thomas.haupt@hs-ansbach.de
-* Kevan Skrona: kevan.skorna@gmail.com
-* Hannah Rickmann: rickmann99@web.de
+* [Kevan Skrona](https://www.linkedin.com/in/kevan-skorna-83b988196/?originalSubdomain=de): kevan.skorna@bdew.de
+* [Hannah Rickmann](https://scoop.iwr.uni-heidelberg.de/team/hrickmann/): hannah.rickmann@iwr.uni-heidelberg.de
 
 FLEX is licensed under the open source [MIT License](https://github.com/H2020-newTRENDs/FLEX/blob/master/LICENSE.txt).
 
