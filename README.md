@@ -53,7 +53,7 @@ As mentioned, FLEX is developed by
 [Fraunhofer ISI](https://www.isi.fraunhofer.de/) and 
 [TU Wien (Energy Economics Group)](https://eeg.tuwien.ac.at/)
 in the framework of the H2020 project [newTRENDs](https://newTRENDs2020.eu/).
-The developers (2021-2023) include:
+The developers (2021-2024) include:
 * [Songmin Yu](https://www.isi.fraunhofer.de/en/competence-center/energiepolitik-energiemaerkte/mitarbeiter/yu.html): songmin.yu@isi.fraunhofer.de
 * [Philipp Mascherbauer](https://eeg.tuwien.ac.at/staff/people/philipp-mascherbauer): philipp.mascherbauer@tuwien.ac.at
 * [Thomas Haupt](https://www.hs-ansbach.de/personen/haupt-thomas/): thomas.haupt@hs-ansbach.de
