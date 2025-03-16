@@ -53,6 +53,7 @@ Modeling households’ behavior, energy system operation, andinteraction in the 
 * Gnann, T., Yu, S., Stute, J., & Kühnbach, M. (2025). The value of smart charging at home and its impact on EV market shares–A German case study. Applied Energy, 380, 124997.
 * Mascherbauer, P., Schöniger, F., Kranzl, L., & Yu, S. (2022). Impact of variable electricity price on heat pump operated buildings. Open Research Europe, 2, 135.
 * Mascherbauer, P., Kranzl, L., Yu, S., & Haupt, T. (2022). Investigating the impact of smart energy management system on the residential electricity consumption in Austria. Energy, 249, 123665.
+* Thomas Haupt (2021). Prosuming, Demand Response and Technological Flexibility: an Integrated Optimization Model for Households' Energy Consumption Behavior. Thesis for Master of Science. Hochschule Ulm.
 
 
 ## Lisence
