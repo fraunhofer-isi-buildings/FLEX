@@ -47,6 +47,14 @@ Until the paper is published, we suggest to use the following citation:
 > Yu, S.; Mascherbauer, P.; Haupt, T.; Skrona, K.; Rickmann, H.; Kochański, M.; Kranzl, L.; (2024). 
 Modeling households’ behavior, energy system operation, andinteraction in the energy community. doi: 10.2139/ssrn.4992581
 
+**Other related work using FLEX:**
+
+* Mascherbauer, P., Martínez, M., Mateo, C., Yu, S., & Kranzl, L. (2025). Analyzing the impact of heating electrification and prosumaging on the future distribution grid costs. Applied Energy, 387, 125563.
+* Gnann, T., Yu, S., Stute, J., & Kühnbach, M. (2025). The value of smart charging at home and its impact on EV market shares–A German case study. Applied Energy, 380, 124997.
+* Mascherbauer, P., Schöniger, F., Kranzl, L., & Yu, S. (2022). Impact of variable electricity price on heat pump operated buildings. Open Research Europe, 2, 135.
+* Mascherbauer, P., Kranzl, L., Yu, S., & Haupt, T. (2022). Investigating the impact of smart energy management system on the residential electricity consumption in Austria. Energy, 249, 123665.
+
+
 ## Lisence
 
 As mentioned, FLEX is developed by 
