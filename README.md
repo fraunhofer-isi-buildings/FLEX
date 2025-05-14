@@ -44,8 +44,8 @@ They are good starting points for you to understand how to use the models.
 The working paper comprehensively introducing FLEX can be found on SSRN ([link](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4992581)). 
 Until the paper is published, we suggest to use the following citation:
 
-> Yu, S.; Mascherbauer, P.; Haupt, T.; Skrona, K.; Rickmann, H.; Kochański, M.; Kranzl, L.; (2024). 
-Modeling households’ behavior, energy system operation, andinteraction in the energy community. doi: 10.2139/ssrn.4992581
+> Yu, S.; Mascherbauer, P.; Haupt, T.; Skrona, K.; Rickmann, H.; Kochański, M.; Kranzl, L.; (2025). 
+Modeling households’ behavior, energy system operation, andinteraction in the energy community. Energy, p. 136338. doi: 10.1016/j.energy.2025.136338
 
 **Other related work using FLEX:**
 
