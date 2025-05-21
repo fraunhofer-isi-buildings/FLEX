@@ -46,10 +46,10 @@ Modeling households’ behavior, energy system operation, and interaction in the
 
 **Other related work using FLEX:**
 
-* Mascherbauer, P., Martínez, M., Mateo, C., Yu, S., & Kranzl, L. (2025). Analyzing the impact of heating electrification and prosumaging on the future distribution grid costs. Applied Energy, 387, 125563.
-* Gnann, T., Yu, S., Stute, J., & Kühnbach, M. (2025). The value of smart charging at home and its impact on EV market shares–A German case study. Applied Energy, 380, 124997.
-* Mascherbauer, P., Schöniger, F., Kranzl, L., & Yu, S. (2022). Impact of variable electricity price on heat pump operated buildings. Open Research Europe, 2, 135.
-* Mascherbauer, P., Kranzl, L., Yu, S., & Haupt, T. (2022). Investigating the impact of smart energy management system on the residential electricity consumption in Austria. Energy, 249, 123665.
+* Mascherbauer, P., Martínez, M., Mateo, C., Yu, S., & Kranzl, L. (2025). Analyzing the impact of heating electrification and prosumaging on the future distribution grid costs. Applied Energy, 387, 125563. doi: [10.1016/j.apenergy.2025.125563](https://www.sciencedirect.com/science/article/pii/S0306261925002934)
+* Gnann, T., Yu, S., Stute, J., & Kühnbach, M. (2025). The value of smart charging at home and its impact on EV market shares–A German case study. Applied Energy, 380, 124997. doi: [10.1016/j.apenergy.2024.124997](https://www.sciencedirect.com/science/article/pii/S030626192402381X)
+* Mascherbauer, P., Schöniger, F., Kranzl, L., & Yu, S. (2022). Impact of variable electricity price on heat pump operated buildings. Open Research Europe, 2, 135. doi: [10.12688/openreseurope.15268.1](https://pmc.ncbi.nlm.nih.gov/articles/PMC10445833/)
+* Mascherbauer, P., Kranzl, L., Yu, S., & Haupt, T. (2022). Investigating the impact of smart energy management system on the residential electricity consumption in Austria. Energy, 249, 123665. doi: [10.1016/j.energy.2022.123665](https://www.sciencedirect.com/science/article/abs/pii/S0360544222005680)
 * Yu, S.; Mascherbauer, P.; Kranzl, L. (2022). Modeling of prosumagers and energy communities in energy demand models. (newTRENDs - Deliverable No. D5.2). Fraunhofer ISI, Karlsruhe.
 * Thomas Haupt (2021). Prosuming, Demand Response and Technological Flexibility: an Integrated Optimization Model for Households' Energy Consumption Behavior. Thesis for Master of Science. Hochschule Ulm.
 
