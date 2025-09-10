@@ -202,7 +202,8 @@ class OperationModel(ABC):
             )
 
             # (T_sup = T_outside because incoming air is not preheated)
-            T_sup[t] = T_outside[t]
+            # T_sup[t] = T_outside[t]
+            T_sup[t] = self.scenario.building.ventilation_supply_temperature
 
             # Equ. C.5
             PHI_mtot_0 = (

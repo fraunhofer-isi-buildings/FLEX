@@ -41,6 +41,7 @@ class Building(OperationComponent):
     effective_window_area_north: Optional[float] = None
     grid_power_max: Optional[float] = None
     supply_temperature: Optional[float] = None
+    ventilation_supply_temperature: Optional[float] = None
     person_num: Optional[int] = None
     appliance_electricity_demand_per_person: Optional[float] = None
     hot_water_demand_per_person: Optional[float] = None

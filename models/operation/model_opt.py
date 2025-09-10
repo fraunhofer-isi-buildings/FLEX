@@ -123,6 +123,7 @@ class OptInstance:
         m.PHI_ia = pyo.Param(mutable=True)
         m.Cm = pyo.Param(mutable=True)
         m.BuildingMassTemperatureStartValue = pyo.Param(mutable=True)
+        m.VentilationSupplyTemperature = pyo.Param(mutable=True)
 
     @staticmethod
     def setup_variables(m):
@@ -220,7 +221,8 @@ class OptInstance:
             # Equ. C.3
             PHI_st = (1 - m.Am / m.Atot - m.Htr_w / 9.1 / m.Atot) * (0.5 * m.Qi + m.Q_Solar[t])
             # T_sup = T_outside because incoming air for heating and cooling ist not pre-heated/cooled
-            T_sup = m.T_outside[t]
+            # T_sup = m.T_outside[t]
+            T_sup = m.VentilationSupplyTemperature
             # Equ. C.5
             PHI_mtot = PHI_m + m.Htr_em * m.T_outside[t] + m.Htr_3 * \
                        (PHI_st + m.Htr_w * m.T_outside[t] + m.Htr_1 *
@@ -245,7 +247,9 @@ class OptInstance:
             )
             # Equ. C.9
             T_m = (m.T_BuildingMass[t] + Tm_start) / 2
-            T_sup = m.T_outside[t]
+            # T_sup = m.T_outside[t]
+            T_sup = m.VentilationSupplyTemperature
+
             # Euq. C.10
             T_s = (
                           m.Htr_ms * T_m
@@ -526,6 +530,7 @@ class OptConfig:
         instance.PHI_ia = self.model.PHI_ia
         instance.Cm = self.model.Cm
         instance.BuildingMassTemperatureStartValue = self.model.BuildingMassTemperatureStartValue
+        instance.VentilationSupplyTemperature = self.scenario.building.ventilation_supply_temperature
 
         # Battery parameters
         instance.BatteryChargeEfficiency = self.scenario.battery.charge_efficiency
