@@ -200,10 +200,7 @@ class OperationModel(ABC):
             PHI_st = (1 - self.Am / self.Atot - self.Htr_w / 9.1 / self.Atot) * (
                     0.5 * self.Qi + Q_solar[t]
             )
-
-            # (T_sup = T_outside because incoming air is not preheated)
-            # T_sup[t] = T_outside[t]
-            T_sup[t] = self.scenario.building.ventilation_supply_temperature
+            T_sup[t] = self.scenario.behavior.ventilation_supply_temperature[t]
 
             # Equ. C.5
             PHI_mtot_0 = (

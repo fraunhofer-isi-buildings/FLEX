@@ -85,6 +85,7 @@ class OperationScenario:
         self.behavior.appliance_electricity_demand = self.setup_appliance_electricity_demand_profile()
         self.behavior.hot_water_demand = self.setup_hot_water_demand_profile()
         self.setup_target_temperature(behavior_df)
+        self.setup_ventilation_supply_temperature(behavior_df)
         self.setup_driving_profiles()
 
     def setup_appliance_electricity_demand_profile(self):
@@ -133,6 +134,12 @@ class OperationScenario:
             self.behavior.target_temperature_not_at_home_max,
             self.behavior.target_temperature_not_at_home_min,
         )
+
+    def setup_ventilation_supply_temperature(self, behavior: pd.DataFrame):
+        if self.building.ventilation_heat_recovery:
+            self.behavior.ventilation_supply_temperature = behavior[f'ventilation_supply_temperature_dpt{self.building.id_demand_profile_type}'].to_numpy()
+        else:
+            self.behavior.ventilation_supply_temperature = self.region.temperature
 
     def setup_driving_profiles(self):
         parking_home = self.input_tables[InputTables.OperationScenario_DrivingProfile_ParkingHome.name]
