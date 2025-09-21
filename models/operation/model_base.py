@@ -60,19 +60,24 @@ class OperationModel(ABC):
                                                       static=False)
 
     def setup_space_heating_params(self):
+        # for centralized system:
+        # self.SpaceHeatingHourlyCOP = self.calc_cop(
+        #     outside_temperature=self.scenario.region.temperature,
+        #     supply_temperature=self.scenario.building.supply_temperature,
+        #     efficiency=self.scenario.boiler.carnot_efficiency_factor,
+        #     source=self.scenario.boiler.type,
+        # )
+        # self.SpaceHeatingHourlyCOP_tank = self.calc_cop(
+        #     outside_temperature=self.scenario.region.temperature,
+        #     supply_temperature=self.scenario.building.supply_temperature + 10,
+        #     efficiency=self.scenario.boiler.carnot_efficiency_factor,
+        #     source=self.scenario.boiler.type,
+        # )
+        # for decentralized system:
+        self.SpaceHeatingHourlyCOP = np.full(8760, 1)
+        self.SpaceHeatingHourlyCOP_tank = np.full(8760, 1)
+
         self.fuel_boiler_efficiency = self.scenario.boiler.fuel_boiler_efficiency
-        self.SpaceHeatingHourlyCOP = self.calc_cop(
-            outside_temperature=self.scenario.region.temperature,
-            supply_temperature=self.scenario.building.supply_temperature,
-            efficiency=self.scenario.boiler.carnot_efficiency_factor,
-            source=self.scenario.boiler.type,
-        )
-        self.SpaceHeatingHourlyCOP_tank = self.calc_cop(
-            outside_temperature=self.scenario.region.temperature,
-            supply_temperature=self.scenario.building.supply_temperature + 10,
-            efficiency=self.scenario.boiler.carnot_efficiency_factor,
-            source=self.scenario.boiler.type,
-        )
         self.T_TankStart_heating = self.scenario.space_heating_tank.temperature_start
         self.M_WaterTank_heating = self.scenario.space_heating_tank.size
         self.U_LossTank_heating = self.scenario.space_heating_tank.loss
@@ -89,18 +94,23 @@ class OperationModel(ABC):
         self.HeatingElement_power = self.scenario.heating_element.power
 
     def setup_hot_water_params(self):
-        self.HotWaterHourlyCOP = self.calc_cop(
-            outside_temperature=self.scenario.region.temperature,
-            supply_temperature=self.scenario.building.supply_temperature,
-            efficiency=self.scenario.boiler.carnot_efficiency_factor,
-            source=self.scenario.boiler.type,
-        )
-        self.HotWaterHourlyCOP_tank = self.calc_cop(
-            outside_temperature=self.scenario.region.temperature,
-            supply_temperature=self.scenario.building.supply_temperature + 10,
-            efficiency=self.scenario.boiler.carnot_efficiency_factor,
-            source=self.scenario.boiler.type,
-        )
+        # for centralized system:
+        # self.HotWaterHourlyCOP = self.calc_cop(
+        #     outside_temperature=self.scenario.region.temperature,
+        #     supply_temperature=self.scenario.building.supply_temperature,
+        #     efficiency=self.scenario.boiler.carnot_efficiency_factor,
+        #     source=self.scenario.boiler.type,
+        # )
+        # self.HotWaterHourlyCOP_tank = self.calc_cop(
+        #     outside_temperature=self.scenario.region.temperature,
+        #     supply_temperature=self.scenario.building.supply_temperature + 10,
+        #     efficiency=self.scenario.boiler.carnot_efficiency_factor,
+        #     source=self.scenario.boiler.type,
+        # )
+        # for decentralized system:
+        self.HotWaterHourlyCOP = np.full(8760, 1)
+        self.HotWaterHourlyCOP_tank = np.full(8760, 1)
+
         self.T_TankStart_DHW = self.scenario.hot_water_tank.temperature_start
         self.M_WaterTank_DHW = self.scenario.hot_water_tank.size
         self.U_LossTank_DHW = self.scenario.hot_water_tank.loss
