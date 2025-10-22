@@ -15,12 +15,13 @@ def get_config(project_name: str):
 
 def run_flex_operation_model(config: "Config"):
     init_project_db(config)
-    # scenario_ids = list(range(1, 25)) + list(range(37, 45)) + list(range(49, 53))  # group 1
-    # scenario_ids = list(range(25, 31)) + list(range(45, 49))  # group 2
-    scenario_ids = list(range(31, 37))  # group 3
+    # scenario_ids = list(range(1, 25)) + list(range(37, 45)) + list(range(49, 53))  # group 1 - normal COP
+    # scenario_ids = list(range(25, 31)) + list(range(45, 49))  # group 2 - decentralized water heating
+    # scenario_ids = list(range(31, 37))  # group 3 - decentralized space and water heating
+    # scenario_ids = list(range(49, 53))  # updating results for the last four scenarios with LED
+    scenario_ids = list(range(25, 37)) + list(range(49, 53))  # testing decentralized heating
     print(scenario_ids)
     run_operation_model(config=config, save_hour=True, scenario_ids=scenario_ids)
-    # run_operation_model(config=config, save_hour=True)
 
 
 def run_flex_operation_plotter(config: "Config"):
