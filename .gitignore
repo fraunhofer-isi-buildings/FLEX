@@ -163,10 +163,15 @@ cython_debug/
 *.sqlite
 *.png
 output/
-projects/*
-!projects/main.py
-!projects/analysis
 *.svg
-*.csv
-*.xlsx
 *.html
+
+# Re-include everything under projects (override global extension ignores)
+!/projects/**
+
+# But still ignore any output folders inside projects subfolders
+/projects/**/output/
+
+# Re-ignore everywhere (after re-include above)
+.DS_Store
+__pycache__/
