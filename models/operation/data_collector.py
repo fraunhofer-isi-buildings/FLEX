@@ -234,3 +234,20 @@ class RefDataCollector(OperationDataCollector):
 
     def get_year_result_table_name(self) -> str:
         return OutputTables.OperationResult_RefYear.name
+
+
+class LinopyDataCollector(OperationDataCollector):
+    def get_var_values(self, variable_name: str) -> np.array:
+        return np.array(self.model.__dict__[variable_name])
+
+    def get_total_cost(self) -> float:
+        return float(self.model.__dict__["total_cost"])
+
+    def get_hour_result_table_name(self) -> str:
+        return OutputTables.OperationResult_OptHour.name
+
+    def get_month_result_table_name(self) -> str:
+        return OutputTables.OperationResult_OptMonth.name
+
+    def get_year_result_table_name(self) -> str:
+        return OutputTables.OperationResult_OptYear.name

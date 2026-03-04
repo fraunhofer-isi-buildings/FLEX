@@ -58,7 +58,15 @@ class OperationScenario:
             component_info = OperationScenarioComponent.__dict__[id_component.replace("ID_", "")]
             if component_info.name in self.__dict__.keys():
                 df = self.input_tables[component_info.table_name]
-                row = df.loc[df.loc[:, component_info.id_name] == component_scenario_id[self.scenario_id], :].squeeze()
+                matched_rows = df.loc[
+                    df.loc[:, component_info.id_name] == component_scenario_id[self.scenario_id], :
+                ]
+                if len(matched_rows) != 1:
+                    raise ValueError(
+                        f"Expected exactly one row in {component_info.table_name} for "
+                        f"{component_info.id_name}={component_scenario_id[self.scenario_id]}, got {len(matched_rows)}."
+                    )
+                row = matched_rows.squeeze()
                 instance = getattr(sys.modules[__name__], component_info.camel_name)()
                 instance.set_params(row.to_dict())
                 setattr(self, component_info.name, instance)

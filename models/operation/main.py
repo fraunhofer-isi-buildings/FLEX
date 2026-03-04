@@ -12,10 +12,13 @@ from tqdm import tqdm
 
 from models.operation.data_collector import OptDataCollector
 from models.operation.data_collector import RefDataCollector
+from models.operation.data_collector import LinopyDataCollector
 from models.operation.model_opt import OptInstance
-from models.operation.model_opt import OptOperationModel
+from models.operation.optimizer import create_optimizer
+from models.operation.optimizer import get_optimization_backend
 from models.operation.model_ref import RefOperationModel
 from models.operation.scenario import OperationScenario
+from models.operation.validation import validate_operation_inputs
 from utils.config import Config
 from utils.db import create_db_conn
 from utils.db import fetch_input_tables
@@ -57,15 +60,23 @@ def run_opt_model(
     save_hour: bool = False,
     hour_vars: Optional[List[str]] = None
 ):
-    opt_model, solve_status = OptOperationModel(scenario).solve(opt_instance)
+    backend = get_optimization_backend()
+    optimizer = create_optimizer(scenario)
+    if backend == "pyomo":
+        opt_model, solve_status = optimizer.solve(opt_instance)
+    else:
+        opt_model, solve_status = optimizer.solve(None)
     if solve_status:
-        OptDataCollector(model=opt_model,
-                         scenario_id=scenario.scenario_id,
-                         config=config,
-                         save_year=save_year,
-                         save_month=save_month,
-                         save_hour=save_hour,
-                         hour_vars=hour_vars).run()
+        collector_class = OptDataCollector if backend == "pyomo" else LinopyDataCollector
+        collector_class(
+            model=opt_model,
+            scenario_id=scenario.scenario_id,
+            config=config,
+            save_year=save_year,
+            save_month=save_month,
+            save_hour=save_hour,
+            hour_vars=hour_vars,
+        ).run()
 
 
 def run_operation_model(config: "Config",
@@ -99,8 +110,13 @@ def run_operation_model(config: "Config",
             db_tables = db.get_table_names()
             for result_table in DB_RESULT_TABLES:
                 if result_table in db_tables:
-                    with db.connection.connect() as conn:
-                        result = conn.execute(sqlalchemy.text(f"DELETE FROM {result_table} WHERE ID_Scenario >= '{latest_scenario_id}'"))
+                    with db.engine.connect() as conn:
+                        conn.execute(
+                            sqlalchemy.text(
+                                f"DELETE FROM {result_table} WHERE ID_Scenario >= :scenario_id"
+                            ),
+                            {"scenario_id": int(latest_scenario_id)},
+                        )
             updated_scenario_ids = drop_until(initial_scenario_ids, latest_scenario_id)
         else:
             updated_scenario_ids = initial_scenario_ids
@@ -110,8 +126,11 @@ def run_operation_model(config: "Config",
     input_tables = fetch_input_tables(config)
     if scenario_ids is None:
         scenario_ids = input_tables[InputTables.OperationScenario.name]["ID_Scenario"].to_list()
+    validate_operation_inputs(input_tables=input_tables, scenario_ids=scenario_ids)
     scenario_ids = align_progress(scenario_ids)
-    opt_instance = OptInstance().create_instance()
+    opt_instance = None
+    if run_opt and get_optimization_backend() == "pyomo":
+        opt_instance = OptInstance().create_instance()
     for scenario_id in tqdm(scenario_ids, desc=f"{config.project_name}"):
         scenario = OperationScenario(config=config, scenario_id=scenario_id, input_tables=input_tables)
         if run_ref:
@@ -215,5 +234,3 @@ def run_operation_model_parallel(
     run_tasks()
     merge_task_results()
     remove_task_folders()
-
-
