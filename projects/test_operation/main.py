@@ -9,7 +9,7 @@ from utils.db import init_project_db
 def get_config(project_name: str):
     return Config(
         project_name=project_name,
-        project_path=os.path.join(os.path.dirname(__file__), f"{project_name}")
+        project_path=os.path.dirname(__file__)
     )
 
 
