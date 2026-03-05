@@ -2,7 +2,6 @@ from typing import List, Union, Dict, Any
 import random
 from pathlib import Path
 import logging
-import sqlalchemy
 import numpy as np
 import pandas as pd
 from functools import wraps
@@ -39,26 +38,6 @@ def performance_counter(func):
         return result
 
     return wrapper
-
-
-def convert_datatype_py2sql(data_types: dict) -> dict:
-    type_py2sql_dict: dict = {
-        int: sqlalchemy.types.BigInteger,
-        Union[int, None]: sqlalchemy.types.BigInteger,
-        Union[List[int], None]: sqlalchemy.types.BigInteger,
-        Union[np.ndarray, int, None]: sqlalchemy.types.BigInteger,
-        str: sqlalchemy.types.Unicode,
-        Union[str, None]: sqlalchemy.types.Unicode,
-        Union[List[str], None]: sqlalchemy.types.Unicode,
-        float: sqlalchemy.types.Float,
-        Union[float, None]: sqlalchemy.types.Float,
-        Union[List[float], None]: sqlalchemy.types.Float,
-        Union[np.ndarray, None]: sqlalchemy.types.Float,
-        Union[np.ndarray, float, None]: sqlalchemy.types.Float,
-    }
-    for key, value in data_types.items():
-        data_types[key] = type_py2sql_dict[value]
-    return data_types
 
 
 def filter_df(df: pd.DataFrame, filter_dict: dict) -> pd.DataFrame:
@@ -155,4 +134,3 @@ def get_time_cols_hour():
             "day_hour": day_hour,
         })
     return pd.DataFrame(time_cols)
-

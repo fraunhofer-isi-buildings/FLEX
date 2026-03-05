@@ -8,46 +8,77 @@ from plotters.community import aggregator_profit
 from plotters.community import p2p_trading_amount
 from plotters.community import battery_operation
 from utils.config import Config
-from utils.db import DB
-from utils.db import init_project_db
-from utils.parquet import read_parquet
+from utils.db import prepare_project_run
+from utils.file_store import read_table_smart
 from utils.tables import InputTables
 from utils.tables import OutputTables
 
 
 def copy_operation_tables(
-    operation_output_folder: str = f"../operation/output",
-    operation_project_name: str = "test_operation",
-    community_input_folder: str = "input"
+    operation_output_folder: str = None,
+    operation_input_folder: str = None,
+    community_input_folder: str = None
 ):
-    def copy_table(
-            operation_table_name: str,
-            community_table_name: str,
-    ):
-        db = DB(path=os.path.join(operation_output_folder, f"{operation_project_name}.sqlite"))
-        db.read_dataframe(operation_table_name).to_csv(
-            os.path.join(community_input_folder, f'{community_table_name}.csv'),
-            index=False
+    project_dir = os.path.dirname(__file__)
+    if operation_output_folder is None:
+        operation_output_folder = os.path.normpath(os.path.join(project_dir, "../test_operation/output"))
+    if operation_input_folder is None:
+        operation_input_folder = os.path.normpath(os.path.join(project_dir, "../test_operation/input"))
+    if community_input_folder is None:
+        community_input_folder = os.path.join(project_dir, "input")
+
+    def read_operation_input_table(table_name: str) -> pd.DataFrame:
+        csv_path = os.path.join(operation_input_folder, f"{table_name}.csv")
+        xlsx_path = os.path.join(operation_input_folder, f"{table_name}.xlsx")
+        if os.path.exists(csv_path):
+            return pd.read_csv(csv_path)
+        if os.path.exists(xlsx_path):
+            return pd.read_excel(xlsx_path)
+        raise FileNotFoundError(
+            f"Cannot find operation input table {table_name} in {operation_input_folder}"
         )
 
-    tables = {
+    direct_copy_tables = {
         InputTables.OperationScenario.name: InputTables.CommunityScenario_OperationScenario.name,
         InputTables.OperationScenario_EnergyPrice.name: InputTables.CommunityScenario_EnergyPrice.name,
         InputTables.OperationScenario_Component_Battery.name: InputTables.CommunityScenario_Component_Battery.name,
-        OutputTables.OperationResult_RefYear.name: InputTables.CommunityScenario_Household_RefYear.name,
     }
-    for source, target in tables.items():
-        copy_table(operation_table_name=source, community_table_name=target)
+    for source, target in direct_copy_tables.items():
+        read_operation_input_table(source).to_csv(
+            os.path.join(community_input_folder, f'{target}.csv'),
+            index=False,
+        )
+
+    read_table_smart(
+        file_name=OutputTables.OperationResult_RefYear.name,
+        folder=operation_output_folder,
+    ).to_csv(
+        os.path.join(community_input_folder, f'{InputTables.CommunityScenario_Household_RefYear.name}.csv'),
+        index=False,
+    )
 
 
 def copy_household_ref_hour(
-    operation_scenario_ids: List[int] = range(1, 161),
-    operation_output_folder: str = f"../operation/output",
-    community_input_folder: str = "input"
+    operation_scenario_ids: List[int] = None,
+    operation_output_folder: str = None,
+    community_input_folder: str = None
 ):
+    project_dir = os.path.dirname(__file__)
+    if operation_output_folder is None:
+        operation_output_folder = os.path.normpath(os.path.join(project_dir, "../test_operation/output"))
+    if community_input_folder is None:
+        community_input_folder = os.path.join(project_dir, "input")
+
+    if operation_scenario_ids is None:
+        operation_scenario_ids = sorted(
+            int(file_name.split("_S")[-1].split(".")[0])
+            for file_name in os.listdir(operation_output_folder)
+            if file_name.startswith(f"{OutputTables.OperationResult_RefHour.name}_S")
+        )
+
     operation_ref_hour_profiles: List[pd.DataFrame] = []
     for id_operation_scenario in operation_scenario_ids:
-        operation_ref_hour_profiles.append(read_parquet(
+        operation_ref_hour_profiles.append(read_table_smart(
             file_name=f'{OutputTables.OperationResult_RefHour.name}_S{id_operation_scenario}',
             folder=operation_output_folder,
             column_names=[
@@ -67,7 +98,7 @@ def copy_household_ref_hour(
 
 def run_flex_community_model(project_name: str):
     config = Config(project_name=project_name, project_path=os.path.dirname(__file__))
-    init_project_db(config)
+    prepare_project_run(config)
     run_community_model(config)
 
 

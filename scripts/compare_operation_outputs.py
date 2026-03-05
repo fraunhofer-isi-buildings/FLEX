@@ -8,7 +8,6 @@ element-wise exact equality for numeric and non-numeric values.
 from __future__ import annotations
 
 import argparse
-import sqlite3
 import sys
 from pathlib import Path
 from typing import Iterable
@@ -21,10 +20,16 @@ def _list_files(folder: Path) -> list[Path]:
     return sorted([p for p in folder.iterdir() if p.is_file()])
 
 
-def _assert_same_file_set(actual: Path, benchmark: Path) -> list[str]:
+def _is_hour_result_file(name: str) -> bool:
+    return name.startswith("OperationResult_") and "Hour_S" in name and (
+        name.endswith(".parquet.gzip") or name.endswith(".csv")
+    )
+
+
+def _assert_same_file_set(actual: Path, benchmark: Path, hour_only: bool) -> list[str]:
     messages: list[str] = []
-    actual_files = {p.name for p in _list_files(actual)}
-    benchmark_files = {p.name for p in _list_files(benchmark)}
+    actual_files = {p.name for p in _list_files(actual) if (not hour_only) or _is_hour_result_file(p.name)}
+    benchmark_files = {p.name for p in _list_files(benchmark) if (not hour_only) or _is_hour_result_file(p.name)}
     missing_in_actual = sorted(benchmark_files - actual_files)
     extra_in_actual = sorted(actual_files - benchmark_files)
     if missing_in_actual:
@@ -117,40 +122,18 @@ def _compare_parquet_file(
     return messages
 
 
-def _sqlite_tables(db_path: Path) -> list[str]:
-    with sqlite3.connect(db_path) as conn:
-        rows = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-        ).fetchall()
-    return [r[0] for r in rows]
-
-
-def _read_sql_table(db_path: Path, table: str) -> pd.DataFrame:
-    with sqlite3.connect(db_path) as conn:
-        return pd.read_sql_query(f"SELECT * FROM {table}", conn)
-
-
-def _compare_sqlite_file(
+def _compare_csv_file(
     actual_file: Path,
     benchmark_file: Path,
     strict: bool,
     atol: float,
     rtol: float,
 ) -> list[str]:
-    messages: list[str] = []
-    context = f"sqlite:{actual_file.name}"
-    t1 = _sqlite_tables(actual_file)
-    t2 = _sqlite_tables(benchmark_file)
-    if t1 != t2:
-        messages.append(f"{context}: table mismatch actual={t1}, benchmark={t2}")
-        return messages
-
-    for table in t1:
-        a = _read_sql_table(actual_file, table)
-        b = _read_sql_table(benchmark_file, table)
-        tctx = f"{context}:{table}"
-        messages.extend(_compare_schema(a, b, tctx))
-        messages.extend(_compare_frame_values(a, b, tctx, strict, atol, rtol))
+    context = f"csv:{actual_file.name}"
+    a = pd.read_csv(actual_file)
+    b = pd.read_csv(benchmark_file)
+    messages = _compare_schema(a, b, context)
+    messages.extend(_compare_frame_values(a, b, context, strict, atol, rtol))
     return messages
 
 
@@ -160,18 +143,20 @@ def compare_outputs(
     strict: bool = True,
     atol: float = 0.0,
     rtol: float = 0.0,
+    hour_only: bool = True,
 ) -> list[str]:
-    messages = _assert_same_file_set(actual, benchmark)
+    messages = _assert_same_file_set(actual, benchmark, hour_only=hour_only)
     if messages:
         return messages
 
-    for file in sorted(p.name for p in _list_files(benchmark)):
+    benchmark_files = [p.name for p in _list_files(benchmark) if (not hour_only) or _is_hour_result_file(p.name)]
+    for file in sorted(benchmark_files):
         af = actual / file
         bf = benchmark / file
         if file.endswith(".parquet.gzip"):
             messages.extend(_compare_parquet_file(af, bf, strict, atol, rtol))
-        elif file.endswith(".sqlite"):
-            messages.extend(_compare_sqlite_file(af, bf, strict, atol, rtol))
+        elif file.endswith(".csv"):
+            messages.extend(_compare_csv_file(af, bf, strict, atol, rtol))
         else:
             messages.append(f"unsupported file type: {file}")
     return messages
@@ -181,6 +166,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Compare operation outputs to benchmark")
     parser.add_argument("--actual", type=Path, required=True, help="Actual output folder")
     parser.add_argument("--benchmark", type=Path, required=True, help="Benchmark output folder")
+    parser.add_argument(
+        "--scope",
+        choices=["hour", "all"],
+        default="all",
+        help="hour: compare only OperationResult_*Hour_S* files; all: compare all files.",
+    )
     parser.add_argument(
         "--mode",
         choices=["strict", "tolerant"],
@@ -205,6 +196,7 @@ def main() -> int:
         strict=strict,
         atol=args.atol,
         rtol=args.rtol,
+        hour_only=(args.scope == "hour"),
     )
     if messages:
         print("FAIL")

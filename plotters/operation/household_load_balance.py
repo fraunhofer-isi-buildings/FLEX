@@ -3,7 +3,7 @@ from typing import List, Optional
 import numpy as np
 
 from utils.config import Config
-from utils.parquet import read_parquet
+from utils.file_store import read_table_smart
 from utils.plotter import Plotter
 
 
@@ -15,7 +15,7 @@ def household_load_balance(config: "Config", scenario_ids: List[int], models: Op
             _models = models
         for model in _models:
             file_name = f'OperationResult_{model}Hour_S{id_scenario}'
-            df = read_parquet(file_name, config.output)
+            df = read_table_smart(file_name=file_name, folder=config.output)
             for season, hour_range in weeks.items():
                 df_week = df[df["Hour"].between(hour_range[0], hour_range[1])]
                 values_dict = {

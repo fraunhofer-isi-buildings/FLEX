@@ -3,7 +3,7 @@ import os
 from models.operation.main import run_operation_model
 from plotters.operation import household_load_balance
 from utils.config import Config
-from utils.db import init_project_db
+from utils.db import prepare_project_run
 
 
 def get_config(project_name: str):
@@ -14,7 +14,7 @@ def get_config(project_name: str):
 
 
 def run_flex_operation_model(config: "Config"):
-    init_project_db(config)
+    prepare_project_run(config)
     # scenario_ids = list(range(1, 25)) + list(range(37, 45)) + list(range(49, 53))  # group 1 - normal COP
     # scenario_ids = list(range(25, 31)) + list(range(45, 49))  # group 2 - decentralized water heating
     # scenario_ids = list(range(31, 37))  # group 3 - decentralized space and water heating

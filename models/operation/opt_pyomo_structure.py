@@ -1,8 +1,24 @@
 import numpy as np
 import pyomo.environ as pyo
+from models.operation.rc_equations import mean_thermal_mass_temperature
+from models.operation.rc_equations import next_thermal_mass_temperature
+from models.operation.rc_equations import phi_m
+from models.operation.rc_equations import phi_mtot
+from models.operation.rc_equations import phi_st
+from models.operation.rc_equations import room_temperature
+from models.operation.rc_equations import surface_temperature
+from models.operation.time_defs import HOURS_PER_YEAR as OP_HOURS_PER_YEAR
 
 
 class OptInstance:
+    HOURS_PER_YEAR = OP_HOURS_PER_YEAR
+    # Tiny tie-break penalties to reduce LP degeneracy while keeping
+    # energy/fuel costs dominant.
+    EPS_BATTERY_THROUGHPUT = 1e-6
+    EPS_EV_THROUGHPUT = 9e-7
+    EPS_INTER_STORAGE_TRANSFER = 7e-7
+    EPS_HEATING_ELEMENT_USE = 5e-7
+    EPS_THERMAL_TANK_THROUGHPUT = 3e-7
 
     # @performance_counter
     def create_instance(self):
@@ -34,7 +50,7 @@ class OptInstance:
 
     @staticmethod
     def setup_sets(m):
-        m.t = pyo.Set(initialize=np.arange(1, 8761))
+        m.t = pyo.Set(initialize=np.arange(1, OptInstance.HOURS_PER_YEAR + 1))
 
     @staticmethod
     def setup_params(m):
@@ -142,7 +158,7 @@ class OptInstance:
 
         # Temperatures (room and thermal mass)
         m.T_Room = pyo.Var(m.t, within=pyo.NonNegativeReals)
-        m.T_BuildingMass = pyo.Var(m.t, within=pyo.NonNegativeReals)
+        m.T_BuildingMass = pyo.Var(m.t, within=pyo.NonNegativeReals, bounds=(0, 100))
 
         # space cooling
         m.Q_RoomCooling = pyo.Var(m.t, within=pyo.NonNegativeReals)
@@ -214,19 +230,30 @@ class OptInstance:
                 Tm_start = m.BuildingMassTemperatureStartValue
             else:
                 Tm_start = m.T_BuildingMass[t - 1]
-            # Equ. C.2
-            PHI_m = m.Am / m.Atot * (0.5 * m.Qi + m.Q_Solar[t])
-            # Equ. C.3
-            PHI_st = (1 - m.Am / m.Atot - m.Htr_w / 9.1 / m.Atot) * (0.5 * m.Qi + m.Q_Solar[t])
+            PHI_m = phi_m(am=m.Am, atot=m.Atot, qi=m.Qi, q_solar=m.Q_Solar[t])
+            PHI_st = phi_st(am=m.Am, atot=m.Atot, htr_w=m.Htr_w, qi=m.Qi, q_solar=m.Q_Solar[t])
             T_sup = m.VentilationSupplyTemperature[t]
-            # Equ. C.5
-            PHI_mtot = PHI_m + m.Htr_em * m.T_outside[t] + m.Htr_3 * \
-                       (PHI_st + m.Htr_w * m.T_outside[t] + m.Htr_1 *
-                        (((m.PHI_ia + m.Q_RoomHeating[t] - m.Q_RoomCooling[t]) / m.Hve) + T_sup)) / m.Htr_2
-            # Equ. C.4
-            return m.T_BuildingMass[t] == \
-                   (Tm_start * ((m.Cm / 3600) - 0.5 * (m.Htr_3 + m.Htr_em)) + PHI_mtot) / \
-                   ((m.Cm / 3600) + 0.5 * (m.Htr_3 + m.Htr_em))
+            PHI_mtot = phi_mtot(
+                phi_m_val=PHI_m,
+                htr_em=m.Htr_em,
+                t_outside=m.T_outside[t],
+                htr_3=m.Htr_3,
+                phi_st_val=PHI_st,
+                htr_w=m.Htr_w,
+                htr_1=m.Htr_1,
+                phi_ia=m.PHI_ia,
+                q_hc=m.Q_RoomHeating[t] - m.Q_RoomCooling[t],
+                hve=m.Hve,
+                t_sup=T_sup,
+                htr_2=m.Htr_2,
+            )
+            return m.T_BuildingMass[t] == next_thermal_mass_temperature(
+                tm_prev=Tm_start,
+                cm=m.Cm,
+                htr_3=m.Htr_3,
+                htr_em=m.Htr_em,
+                phi_mtot_val=PHI_mtot,
+            )
         m.thermal_mass_temperature_rule = pyo.Constraint(m.t, rule=thermal_mass_temperature_rc)
 
     @staticmethod
@@ -237,33 +264,29 @@ class OptInstance:
                 Tm_start = m.BuildingMassTemperatureStartValue
             else:
                 Tm_start = m.T_BuildingMass[t - 1]
-            # Equ. C.3
-            PHI_st = (1 - m.Am / m.Atot - m.Htr_w / 9.1 / m.Atot) * (
-                    0.5 * m.Qi + m.Q_Solar[t]
-            )
-            # Equ. C.9
-            T_m = (m.T_BuildingMass[t] + Tm_start) / 2
+            PHI_st = phi_st(am=m.Am, atot=m.Atot, htr_w=m.Htr_w, qi=m.Qi, q_solar=m.Q_Solar[t])
+            T_m = mean_thermal_mass_temperature(tm_now=m.T_BuildingMass[t], tm_prev=Tm_start)
             T_sup = m.VentilationSupplyTemperature[t]
-
-            # Euq. C.10
-            T_s = (
-                          m.Htr_ms * T_m
-                          + PHI_st
-                          + m.Htr_w * m.T_outside[t]
-                          + m.Htr_1
-                          * (
-                                  T_sup
-                                  + (m.PHI_ia + m.Q_RoomHeating[t] - m.Q_RoomCooling[t]) / m.Hve
-                          )
-                  ) / (m.Htr_ms + m.Htr_w + m.Htr_1)
-            # Equ. C.11
-            T_air = (
-                            m.Htr_is * T_s
-                            + m.Hve * T_sup
-                            + m.PHI_ia
-                            + m.Q_RoomHeating[t]
-                            - m.Q_RoomCooling[t]
-                    ) / (m.Htr_is + m.Hve)
+            T_s = surface_temperature(
+                htr_ms=m.Htr_ms,
+                t_m=T_m,
+                phi_st_val=PHI_st,
+                htr_w=m.Htr_w,
+                t_outside=m.T_outside[t],
+                htr_1=m.Htr_1,
+                t_sup=T_sup,
+                phi_ia=m.PHI_ia,
+                q_hc=m.Q_RoomHeating[t] - m.Q_RoomCooling[t],
+                hve=m.Hve,
+            )
+            T_air = room_temperature(
+                htr_is=m.Htr_is,
+                t_s=T_s,
+                hve=m.Hve,
+                t_sup=T_sup,
+                phi_ia=m.PHI_ia,
+                q_hc=m.Q_RoomHeating[t] - m.Q_RoomCooling[t],
+            )
             return m.T_Room[t] == T_air
 
         m.room_temperature_rule = pyo.Constraint(m.t, rule=room_temperature_rc)
@@ -453,7 +476,22 @@ class OptInstance:
     @staticmethod
     def setup_objective(m):
         def minimize_cost(m):
-            rule = sum(m.Grid[t] * m.ElectricityPrice[t] + m.Fuel[t] * m.FuelPrice[t] - m.Feed2Grid[t] * m.FiT[t] for t in m.t)
+            rule = sum(
+                m.Grid[t] * m.ElectricityPrice[t]
+                + m.Fuel[t] * m.FuelPrice[t]
+                - m.Feed2Grid[t] * m.FiT[t]
+                + OptInstance.EPS_BATTERY_THROUGHPUT * (m.BatCharge[t] + m.BatDischarge[t])
+                + OptInstance.EPS_EV_THROUGHPUT * (m.EVCharge[t] + m.EVDischarge[t])
+                + OptInstance.EPS_INTER_STORAGE_TRANSFER * (m.Bat2EV[t] + m.EV2Bat[t])
+                + OptInstance.EPS_HEATING_ELEMENT_USE * m.Q_HeatingElement[t]
+                + OptInstance.EPS_THERMAL_TANK_THROUGHPUT * (
+                    m.Q_HeatingTank_in[t]
+                    + m.Q_HeatingTank_out[t]
+                    + m.Q_DHWTank_in[t]
+                    + m.Q_DHWTank_out[t]
+                )
+                for t in m.t
+            )
             return rule
         m.total_operation_cost_rule = pyo.Objective(rule=minimize_cost, sense=pyo.minimize)
 

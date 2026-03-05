@@ -4,7 +4,10 @@ from typing import Dict, Iterable
 
 import pandas as pd
 
-from models.operation.constants import OperationScenarioComponent
+from models.operation.boiler import ALLOWED_BOILER_TYPES
+from models.operation.boiler import FUEL_BOILER_TYPES
+from models.operation.boiler import normalize_boiler_type
+from models.operation.component_registry import OperationScenarioComponent
 from utils.tables import InputTables
 
 
@@ -53,7 +56,6 @@ def validate_operation_inputs(
         InputTables.OperationScenario_Component_EnergyPrice.name,
         InputTables.OperationScenario_Component_HeatingElement.name,
         InputTables.OperationScenario_Component_SpaceCoolingTechnology.name,
-        InputTables.OperationScenario_Component_Region.name,
         InputTables.OperationScenario_BehaviorProfile.name,
         InputTables.OperationScenario_DrivingProfile_ParkingHome.name,
         InputTables.OperationScenario_DrivingProfile_Distance.name,
@@ -78,9 +80,9 @@ def validate_operation_inputs(
     component_id_columns = [c for c in scenario_table.columns if c.startswith("ID_") and c != "ID_Scenario"]
     for id_col in component_id_columns:
         component_key = id_col.replace("ID_", "")
-        if component_key not in OperationScenarioComponent.__dict__:
+        component_info = getattr(OperationScenarioComponent, component_key, None)
+        if component_info is None:
             continue
-        component_info = OperationScenarioComponent.__dict__[component_key]
         component_table = input_tables[component_info.table_name]
         _require_columns(component_table, component_info.table_name, [component_info.id_name])
         valid_ids = set(_as_int(v) for v in component_table[component_info.id_name].dropna().tolist())
@@ -198,3 +200,56 @@ def validate_operation_inputs(
                 raise ValueError(
                     f"Missing price column {price_col} in {InputTables.OperationScenario_EnergyPrice.name}."
                 )
+
+    # Validate boiler types and required fuel price columns.
+    boiler_df = input_tables[InputTables.OperationScenario_Component_Boiler.name]
+    _require_columns(
+        boiler_df,
+        InputTables.OperationScenario_Component_Boiler.name,
+        ["ID_Boiler", "type", "carnot_efficiency_factor", "fuel_boiler_efficiency"],
+    )
+    boiler_ids_in_use = set(
+        _as_int(v)
+        for v in scenario_table.loc[scenario_table["ID_Scenario"].isin(requested_scenario_ids), "ID_Boiler"].tolist()
+    )
+    used_boilers = boiler_df.loc[boiler_df["ID_Boiler"].isin(boiler_ids_in_use)]
+    for _, row in used_boilers.iterrows():
+        boiler_type_raw = row["type"]
+        boiler_type = normalize_boiler_type(boiler_type_raw)
+        if boiler_type not in ALLOWED_BOILER_TYPES:
+            raise ValueError(
+                f"Unsupported boiler.type '{boiler_type_raw}'. "
+                f"Allowed values: {sorted(ALLOWED_BOILER_TYPES)}"
+            )
+        if pd.isna(row["carnot_efficiency_factor"]):
+            raise ValueError(
+                f"Missing carnot_efficiency_factor for ID_Boiler={row['ID_Boiler']}"
+            )
+        if boiler_type in FUEL_BOILER_TYPES and pd.isna(row["fuel_boiler_efficiency"]):
+            raise ValueError(
+                f"Missing fuel_boiler_efficiency for fuel boiler ID_Boiler={row['ID_Boiler']}"
+            )
+        if boiler_type in FUEL_BOILER_TYPES:
+            # Ensure hourly fuel price column exists for all in-use energy price IDs.
+            energy_price_component_ids = set(
+                _as_int(v)
+                for v in scenario_table.loc[
+                    scenario_table["ID_Scenario"].isin(requested_scenario_ids), "ID_EnergyPrice"
+                ].tolist()
+            )
+            energy_price_component_rows = energy_price_component_df.loc[
+                energy_price_component_df["ID_EnergyPrice"].isin(energy_price_component_ids)
+            ]
+            for _, ep_row in energy_price_component_rows.iterrows():
+                id_col = f"id_{boiler_type}"
+                if id_col not in ep_row.index or pd.isna(ep_row[id_col]):
+                    raise ValueError(
+                        f"Missing {id_col} mapping for fuel boiler type '{boiler_type}' "
+                        f"in {InputTables.OperationScenario_Component_EnergyPrice.name}."
+                    )
+                price_col = f"{boiler_type}_{_as_int(ep_row[id_col])}"
+                if price_col not in energy_price_hourly_df.columns:
+                    raise ValueError(
+                        f"Missing hourly fuel price column {price_col} "
+                        f"in {InputTables.OperationScenario_EnergyPrice.name}."
+                    )

@@ -31,7 +31,6 @@ class InputTables(Enum):
     OperationScenario_Component_HeatingElement = auto()
     OperationScenario_Component_HotWaterTank = auto()
     OperationScenario_Component_PV = auto()
-    OperationScenario_Component_Region = auto()
     OperationScenario_Component_SpaceCoolingTechnology = auto()
     OperationScenario_Component_SpaceHeatingTank = auto()
     OperationScenario_Component_Vehicle = auto()

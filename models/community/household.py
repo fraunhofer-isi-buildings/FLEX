@@ -3,7 +3,7 @@ from typing import Dict, Optional
 import numpy as np
 import pandas as pd
 
-from models.operation.constants import OperationScenarioComponent
+from models.operation.component_registry import OperationScenarioComponent
 
 
 class Household:
@@ -36,7 +36,10 @@ class Household:
                                                                         self.operation_scenario_id].iloc[0].to_dict()
         del component_scenario_ids["ID_Scenario"]
         for id_component, component_scenario_id in component_scenario_ids.items():
-            component_info = OperationScenarioComponent.__dict__[id_component.replace("ID_", "")]
+            component_key = id_component.replace("ID_", "")
+            component_info = OperationScenarioComponent.__dict__.get(component_key)
+            if component_info is None:
+                continue
             if f'id_{component_info.name}' in self.__dict__.keys():
                 setattr(self, f'id_{component_info.name}', component_scenario_id)
 

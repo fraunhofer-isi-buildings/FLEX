@@ -58,8 +58,6 @@ cover/
 # Django stuff:
 *.log
 local_settings.py
-db.sqlite3
-db.sqlite3-journal
 
 # Flask stuff:
 instance/
@@ -160,7 +158,6 @@ cython_debug/
 .idea/
 .DS_Store
 
-*.sqlite
 *.png
 output/
 *.svg
@@ -171,7 +168,11 @@ output/
 
 # But still ignore any output folders inside projects subfolders
 /projects/**/output/
+/projects/test_operation/output_benchmark/
 
 # Re-ignore everywhere (after re-include above)
 .DS_Store
 __pycache__/
+
+# Local benchmark artifacts (keep across branch switches, do not track)
+/benchmark_artifacts/

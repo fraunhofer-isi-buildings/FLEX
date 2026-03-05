@@ -1,51 +1,102 @@
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from models.operation.boiler import is_hp_boiler
+from models.operation.boiler import normalize_boiler_type
+from models.operation.time_defs import HOURS_PER_YEAR as OP_HOURS_PER_YEAR
+
 if TYPE_CHECKING:
-    from models.operation.model_base import OperationModel
+    from models.operation.physics_model import OperationModel
+
+
+@dataclass(frozen=True)
+class ScenarioFlags:
+    uses_hp: bool
+    has_heating_element: bool
+    has_space_heating_tank: bool
+    has_hot_water_tank: bool
+    has_battery: bool
+    has_ev: bool
+    has_pv: bool
+    has_cooling: bool
+    ev_v2b_enabled: bool
+
+    @classmethod
+    def from_model(cls, model: "OperationModel") -> "ScenarioFlags":
+        scenario = model.scenario
+        return cls(
+            uses_hp=is_hp_boiler(scenario.boiler.type),
+            has_heating_element=model.HeatingElement_power > 0,
+            has_space_heating_tank=scenario.space_heating_tank.size > 0,
+            has_hot_water_tank=scenario.hot_water_tank.size > 0,
+            has_battery=scenario.battery.capacity > 0,
+            has_ev=scenario.vehicle.capacity > 0,
+            has_pv=scenario.pv.size > 0,
+            has_cooling=scenario.space_cooling_technology.power > 0,
+            ev_v2b_enabled=model.EVOptionV2B != 0,
+        )
 
 
 class OptConfig:
-    HOURS_PER_YEAR = 8760
+    HOURS_PER_YEAR = OP_HOURS_PER_YEAR
 
     def __init__(self, model: 'OperationModel'):
         self.model = model
         self.scenario = model.scenario
+        self.flags = ScenarioFlags.from_model(model)
+        self._hours_index = tuple(range(1, self.HOURS_PER_YEAR + 1))
 
     def _hours(self):
-        return range(1, self.HOURS_PER_YEAR + 1)
+        return self._hours_index
+
+    @staticmethod
+    def _components(instance, names):
+        return [getattr(instance, name) for name in names]
 
     def _fix_vars(self, instance, var_names, value=0):
-        for t in self._hours():
-            for var_name in var_names:
-                instance.__dict__[var_name][t].fix(value)
+        for var in self._components(instance, var_names):
+            for var_data in var.values():
+                var_data.fix(value)
 
     def _unfix_vars(self, instance, var_names):
-        for t in self._hours():
-            for var_name in var_names:
-                instance.__dict__[var_name][t].fixed = False
+        for var in self._components(instance, var_names):
+            for var_data in var.values():
+                var_data.fixed = False
 
     def _set_upper_bounds(self, instance, upper_bounds: dict):
-        for t in self._hours():
-            for var_name, ub in upper_bounds.items():
-                instance.__dict__[var_name][t].setub(ub)
+        for var_name, ub in upper_bounds.items():
+            var = getattr(instance, var_name)
+            for var_data in var.values():
+                var_data.setub(ub)
 
     def _set_lower_bounds(self, instance, lower_bounds: dict):
-        for t in self._hours():
-            for var_name, lb in lower_bounds.items():
-                instance.__dict__[var_name][t].setlb(lb)
+        for var_name, lb in lower_bounds.items():
+            var = getattr(instance, var_name)
+            for var_data in var.values():
+                var_data.setlb(lb)
 
     def _set_bounds(self, instance, bounds: dict):
-        for t in self._hours():
-            for var_name, (lb, ub) in bounds.items():
-                instance.__dict__[var_name][t].setlb(lb)
-                instance.__dict__[var_name][t].setub(ub)
+        for var_name, (lb, ub) in bounds.items():
+            var = getattr(instance, var_name)
+            for var_data in var.values():
+                var_data.setlb(lb)
+                var_data.setub(ub)
 
     @staticmethod
     def _to_indexed_dict(values):
         return {idx: val for idx, val in enumerate(values, start=1)}
 
     def _store_param_values(self, instance, param_name: str, values):
-        instance.__dict__[param_name].store_values(self._to_indexed_dict(values))
+        getattr(instance, param_name).store_values(self._to_indexed_dict(values))
+
+    @staticmethod
+    def _set_rules_active(instance, rule_names, active: bool):
+        for rule_name in rule_names:
+            rule = getattr(instance, rule_name)
+            if active:
+                rule.activate()
+            else:
+                rule.deactivate()
 
     # @performance_counter
     def config_instance(self, instance):
@@ -67,7 +118,8 @@ class OptConfig:
     def config_static_params(self, instance):
         instance.CPWater = self.model.CPWater
         # building parameters:
-        instance.Am = self.scenario.building.Am_factor
+        # Use effective mass area (m2) to match 5R1C formulation used in physics_model.
+        instance.Am = self.model.Am
         instance.Hve = self.scenario.building.Hve
         instance.Htr_w = self.scenario.building.Htr_w
         # parameters that have to be calculated:
@@ -125,7 +177,7 @@ class OptConfig:
             self.scenario.behavior.ventilation_supply_temperature,
         )
 
-        if self.scenario.boiler.type in ["Air_HP", "Ground_HP", "Electric"]:
+        if self.flags.uses_hp:
             self._store_param_values(instance, "SpaceHeatingHourlyCOP", self.model.SpaceHeatingHourlyCOP)
             self._store_param_values(instance, "SpaceHeatingHourlyCOP_tank", self.model.SpaceHeatingHourlyCOP_tank)
             self._store_param_values(instance, "HotWaterHourlyCOP", self.model.HotWaterHourlyCOP)
@@ -141,14 +193,26 @@ class OptConfig:
                 instance.Q_Heating_Boiler_out[t].fix(0)
 
             # deactivate boiler functions
-            instance.boiler_conversion_rule.deactivate()
-            instance.max_fuel_boiler_power_rule.deactivate()
-            instance.bypass_DHW_fuel_boiler_rule.deactivate()
-            instance.calc_use_of_fuel_boiler_power_DHW_rule.deactivate()
+            self._set_rules_active(
+                instance,
+                [
+                    "boiler_conversion_rule",
+                    "max_fuel_boiler_power_rule",
+                    "bypass_DHW_fuel_boiler_rule",
+                    "calc_use_of_fuel_boiler_power_DHW_rule",
+                ],
+                active=False,
+            )
             # activate heat pump functions
-            instance.max_HP_power_rule.activate()
-            instance.bypass_DHW_HP_rule.activate()
-            instance.calc_use_of_HP_power_DHW_rule.activate()
+            self._set_rules_active(
+                instance,
+                [
+                    "max_HP_power_rule",
+                    "bypass_DHW_HP_rule",
+                    "calc_use_of_HP_power_DHW_rule",
+                ],
+                active=True,
+            )
 
         else:  # fuel based boiler instead of heat pump
             self._store_param_values(instance, "HotWaterHourlyCOP_tank", [0.0] * self.HOURS_PER_YEAR)
@@ -166,21 +230,33 @@ class OptConfig:
                 instance.E_DHW_HP_out[t].fix(0)
 
             # activate boiler functions
-            instance.boiler_conversion_rule.activate()
-            instance.max_fuel_boiler_power_rule.activate()
-            instance.bypass_DHW_fuel_boiler_rule.activate()
-            instance.calc_use_of_fuel_boiler_power_DHW_rule.activate()
+            self._set_rules_active(
+                instance,
+                [
+                    "boiler_conversion_rule",
+                    "max_fuel_boiler_power_rule",
+                    "bypass_DHW_fuel_boiler_rule",
+                    "calc_use_of_fuel_boiler_power_DHW_rule",
+                ],
+                active=True,
+            )
             # deactivate heat pump functions
-            instance.max_HP_power_rule.deactivate()
-            instance.bypass_DHW_HP_rule.deactivate()
-            instance.calc_use_of_HP_power_DHW_rule.deactivate()
+            self._set_rules_active(
+                instance,
+                [
+                    "max_HP_power_rule",
+                    "bypass_DHW_HP_rule",
+                    "calc_use_of_HP_power_DHW_rule",
+                ],
+                active=False,
+            )
 
     def config_heating_element(self, instance):
         if self.model.HeatingElement_efficiency > 0:
             instance.HeatingElement_efficiency = self.model.HeatingElement_efficiency
         else:
             instance.HeatingElement_efficiency = 1  # to avoid that the model cant run
-        if self.model.HeatingElement_power == 0:
+        if not self.flags.has_heating_element:
             self._fix_vars(
                 instance,
                 ["Q_HeatingElement", "Q_HeatingElement_heat", "Q_HeatingElement_DHW"],
@@ -201,8 +277,9 @@ class OptConfig:
     def config_prices(self, instance):
         self._store_param_values(instance, "ElectricityPrice", self.scenario.energy_price.electricity)
         self._store_param_values(instance, "FiT", self.scenario.energy_price.electricity_feed_in)
-        if self.scenario.boiler.type not in ['Air_HP', 'Ground_HP', "Electric"]:
-            fuel_prices = self.scenario.energy_price.__dict__[self.scenario.boiler.type]
+        if not self.flags.uses_hp:
+            fuel_carrier = normalize_boiler_type(self.scenario.boiler.type)
+            fuel_prices = getattr(self.scenario.energy_price, fuel_carrier)
         else:
             fuel_prices = [0.0] * self.HOURS_PER_YEAR
         self._store_param_values(instance, "FuelPrice", fuel_prices)
@@ -213,18 +290,16 @@ class OptConfig:
             instance.Feed2Grid[t].setub(self.scenario.building.grid_power_max)
 
     def config_space_heating(self, instance):
-        for t in self._hours():
-            instance.T_BuildingMass[t].setub(100)
-        if self.scenario.boiler.type in ["Air_HP", "Ground_HP", "Electric"]:
-            for t in self._hours():
-                instance.E_Heating_HP_out[t].setub(self.model.SpaceHeating_MaxBoilerPower)
+        if self.flags.uses_hp:
+            for var_data in instance.E_Heating_HP_out.values():
+                var_data.setub(self.model.SpaceHeating_MaxBoilerPower)
         else:
-            for t in self._hours():
-                instance.Q_Heating_Boiler_out[t].setub(self.model.SpaceHeating_MaxBoilerPower)
-                instance.Q_DHW_Boiler_out[t].setub(self.model.SpaceHeating_MaxBoilerPower)
+            for q_heat, q_dhw in zip(instance.Q_Heating_Boiler_out.values(), instance.Q_DHW_Boiler_out.values()):
+                q_heat.setub(self.model.SpaceHeating_MaxBoilerPower)
+                q_dhw.setub(self.model.SpaceHeating_MaxBoilerPower)
 
     def config_space_heating_tank(self, instance):
-        if self.scenario.space_heating_tank.size == 0:
+        if not self.flags.has_space_heating_tank:
             self._set_bounds(
                 instance,
                 {"Q_HeatingTank": (0, 0)},
@@ -248,9 +323,9 @@ class OptConfig:
             instance.tank_energy_rule_heating.activate()
 
     def config_hot_water_tank(self, instance):
-        if self.scenario.hot_water_tank.size == 0:
-            self._fix_vars(instance, ["Q_DHWTank_out", "Q_DHWTank_in", "Q_DHWTank"], value=0)
+        if not self.flags.has_hot_water_tank:
             self._set_bounds(instance, {"Q_DHWTank": (0, 0)})
+            self._fix_vars(instance, ["Q_DHWTank_out", "Q_DHWTank_in", "Q_DHWTank"], value=0)
             self._set_upper_bounds(instance, {"E_DHW_HP_out": self.model.SpaceHeating_MaxBoilerPower})  # TODO
             instance.tank_energy_rule_DHW.deactivate()
         else:
@@ -270,7 +345,7 @@ class OptConfig:
             instance.tank_energy_rule_DHW.activate()
 
     def config_battery(self, instance):
-        if self.scenario.battery.capacity == 0:
+        if not self.flags.has_battery:
             self._fix_vars(
                 instance,
                 ["Grid2Bat", "Bat2Load", "BatSoC", "BatCharge", "BatDischarge", "PV2Bat"],
@@ -281,7 +356,7 @@ class OptConfig:
             instance.BatSoC_rule.deactivate()
         else:
             # check if pv exists:
-            if self.scenario.pv.size > 0:
+            if self.flags.has_pv:
                 for t in self._hours():
                     instance.PV2Bat[t].fixed = False
                     instance.PV2Bat[t].setub(self.scenario.battery.charge_power_max)
@@ -311,12 +386,12 @@ class OptConfig:
         # in winter only 3°C increase to keep comfort level and in summer maximum reduction of 3°C
         max_target_temperature, min_target_temperature = self.model.generate_target_indoor_temperature(
             temperature_offset=3)
-        for t in self._hours():
-            instance.T_Room[t].setub(max_target_temperature[t - 1])
-            instance.T_Room[t].setlb(min_target_temperature[t - 1])
+        for t_room, ub, lb in zip(instance.T_Room.values(), max_target_temperature, min_target_temperature):
+            t_room.setub(float(ub))
+            t_room.setlb(float(lb))
 
     def config_space_cooling_technology(self, instance):
-        if self.scenario.space_cooling_technology.power == 0:
+        if not self.flags.has_cooling:
             self._fix_vars(instance, ["Q_RoomCooling", "E_RoomCooling"], value=0)
             self._store_param_values(instance, "CoolingHourlyCOP", [0.0] * self.HOURS_PER_YEAR)
 
@@ -328,72 +403,73 @@ class OptConfig:
 
             instance.E_RoomCooling_with_cooling_rule.activate()
 
-    def config_vehicle(self, instance):
-        max_discharge_ev = self.model.create_upper_bound_ev_discharge()
-        if self.scenario.vehicle.capacity == 0:  # no EV is implemented
-            self._fix_vars(
-                instance,
-                ["Grid2EV", "Bat2EV", "PV2EV", "EVSoC", "EVCharge", "EVDischarge", "EV2Load", "EV2Bat"],
-                value=0,
-            )
-            for t in self._hours():
-                instance.EVDemandProfile[t] = 0
-            instance.EVCharge_rule.deactivate()
-            instance.EVDischarge_rule.deactivate()
-            instance.EVSoC_rule.deactivate()
+    def _fix_no_ev_vars(self, instance):
+        self._fix_vars(
+            instance,
+            ["Grid2EV", "Bat2EV", "PV2EV", "EVSoC", "EVCharge", "EVDischarge", "EV2Load", "EV2Bat"],
+            value=0,
+        )
+        for t in self._hours():
+            instance.EVDemandProfile[t] = 0
+        instance.EVCharge_rule.deactivate()
+        instance.EVDischarge_rule.deactivate()
+        instance.EVSoC_rule.deactivate()
+
+    def _config_ev_charge_sources(self, instance):
+        if self.flags.has_pv:
+            for var_data in instance.PV2EV.values():
+                var_data.fixed = False
         else:
-            # if there is a PV installed:
-            if self.scenario.pv.size > 0:
-                for t in self._hours():
-                    instance.PV2EV[t].fixed = False
-            else:  # if there is no PV, EV can not be charged by it
-                self._fix_vars(instance, ["PV2EV"], value=0)
+            self._fix_vars(instance, ["PV2EV"], value=0)
 
-            # unfix variables
-            self._unfix_vars(
-                instance,
-                ["Grid2EV", "Bat2EV", "EVSoC", "EVCharge", "EVDischarge", "EV2Load", "EV2Bat"],
-            )
+    def _config_ev_bounds_and_home_availability(self, instance):
+        max_discharge_ev = self.model.create_upper_bound_ev_discharge()
+        self._unfix_vars(
+            instance,
+            ["Grid2EV", "Bat2EV", "EVSoC", "EVCharge", "EVDischarge", "EV2Load", "EV2Bat"],
+        )
 
-            for t in self._hours():
-                # set upper bounds
-                instance.EVSoC[t].setub(self.scenario.vehicle.capacity)
-                instance.EVCharge[t].setub(self.scenario.vehicle.charge_power_max)
-                instance.EVDischarge[t].setub(max_discharge_ev[t - 1])
-                instance.EVDemandProfile[t] = self.model.EVDemandProfile[t-1]
-                # fix variables when EV is not at home:
-                if self.model.EVAtHomeProfile[t-1] == 0:
-                    instance.Grid2EV[t].fix(0)
-                    instance.Bat2EV[t].fix(0)
-                    instance.PV2EV[t].fix(0)
-                    instance.EVCharge[t].fix(0)
-                    instance.EV2Load[t].fix(0)
-                    instance.EV2Bat[t].fix(0)
+        for t in self._hours():
+            instance.EVSoC[t].setub(self.scenario.vehicle.capacity)
+            instance.EVCharge[t].setub(self.scenario.vehicle.charge_power_max)
+            instance.EVDischarge[t].setub(max_discharge_ev[t - 1])
+            instance.EVDemandProfile[t] = self.model.EVDemandProfile[t - 1]
+            if self.model.EVAtHomeProfile[t - 1] == 0:
+                instance.Grid2EV[t].fix(0)
+                instance.Bat2EV[t].fix(0)
+                instance.PV2EV[t].fix(0)
+                instance.EVCharge[t].fix(0)
+                instance.EV2Load[t].fix(0)
+                instance.EV2Bat[t].fix(0)
 
-            # in case there is a stationary battery available:
-            if self.scenario.battery.capacity > 0:
-                if self.model.EVOptionV2B == 0:
-                    self._fix_vars(instance, ["EV2Bat", "EV2Load"], value=0)
+    def _config_ev_v2b(self, instance):
+        if self.flags.has_battery:
+            if not self.flags.ev_v2b_enabled:
+                self._fix_vars(instance, ["EV2Bat", "EV2Load"], value=0)
+            return
+        for t in self._hours():
+            instance.EV2Bat[t].fix(0)
+            instance.Bat2EV[t].fix(0)
+            if not self.flags.ev_v2b_enabled:
+                instance.EV2Load[t].fix(0)
 
-            # in case there is no stationary battery available:
-            else:
-                for t in self._hours():
-                    instance.EV2Bat[t].fix(0)
-                    instance.Bat2EV[t].fix(0)
-                    if self.model.EVOptionV2B == 0:
-                        instance.EV2Load[t].fix(0)
-
-            instance.EVCharge_rule.activate()
-            instance.EVDischarge_rule.activate()
-            instance.EVSoC_rule.activate()
+    def config_vehicle(self, instance):
+        if not self.flags.has_ev:
+            self._fix_no_ev_vars(instance)
+            return
+        self._config_ev_charge_sources(instance)
+        self._config_ev_bounds_and_home_availability(instance)
+        self._config_ev_v2b(instance)
+        instance.EVCharge_rule.activate()
+        instance.EVDischarge_rule.activate()
+        instance.EVSoC_rule.activate()
 
     def config_pv(self, instance):
-        if self.scenario.pv.size == 0:
+        if not self.flags.has_pv:
             self._fix_vars(instance, ["PV2Load", "PV2Bat", "PV2Grid"], value=0)
             instance.UseOfPV_rule.deactivate()
         else:
-            for t in self._hours():
-                instance.PV2Load[t].fixed = False
-                instance.PV2Grid[t].fixed = False
-                # instance.PV2Load[t].setub(self.scenario.building.grid_power_max)
+            for pv2load, pv2grid in zip(instance.PV2Load.values(), instance.PV2Grid.values()):
+                pv2load.fixed = False
+                pv2grid.fixed = False
             instance.UseOfPV_rule.activate()

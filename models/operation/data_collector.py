@@ -6,19 +6,21 @@ import pandas as pd
 import numpy as np
 import logging
 
-from matplotlib import pyplot as plt
-
-from utils.db import create_db_conn
-from models.operation.constants import OperationResultVar
+from models.operation.result_registry import ResultVarSpec
+from models.operation.result_registry import iter_operation_result_specs
+from models.operation.time_defs import HOURS_PER_YEAR as OP_HOURS_PER_YEAR
+from models.operation.time_defs import MONTH_HOUR_RANGES
 from utils.tables import OutputTables
-from utils.parquet import write_parquet
+from utils.file_store import write_table
 
 if TYPE_CHECKING:
     from utils.config import Config
-    from models.operation.model_base import OperationModel
+    from models.operation.physics_model import OperationModel
 
 
 class OperationDataCollector(ABC):
+    HOURS_PER_YEAR = OP_HOURS_PER_YEAR
+
     def __init__(
         self,
         model: Union["OperationModel", "pyo.ConcreteModel"],
@@ -27,7 +29,9 @@ class OperationDataCollector(ABC):
         save_year: Optional[bool] = True,
         save_month: Optional[bool] = False,
         save_hour: Optional[bool] = False,
-        hour_vars: Optional[List[str]] = None
+        hour_vars: Optional[List[str]] = None,
+        hour_file_format: str = "parquet",
+        aggregate_file_format: str = "csv",
     ):
         """
         :param model: either the ref model or the opt model
@@ -42,7 +46,6 @@ class OperationDataCollector(ABC):
         self.model = model
         self.scenario_id = scenario_id
         self.config = config
-        self.db = create_db_conn(config)
         self.hour_result = {}
         self.month_result = {}
         self.year_result = {}
@@ -52,6 +55,10 @@ class OperationDataCollector(ABC):
         self.logger = logging.getLogger(f"{config.project_name}")
         self.hour_vars = hour_vars
         self.output_folder = self.set_output_folder(config)
+        self.hour_file_format = hour_file_format
+        del aggregate_file_format
+        # Month/Year outputs are always CSV; only hourly output is format-configurable.
+        self.aggregate_file_format = "csv"
 
     @staticmethod
     def set_output_folder(config: "Config"):
@@ -81,44 +88,57 @@ class OperationDataCollector(ABC):
     def get_year_result_table_name(self) -> str:
         ...
 
-    def convert_hour_to_month(self, values):
+    def convert_hour_to_month(self, values: np.array):
         month_results = []
-        hours_per_month = {
-            1: (1, 744),
-            2: (745, 1416),
-            3: (1417, 2160),
-            4: (2161, 2880),
-            5: (2881, 3624),
-            6: (3625, 4344),
-            7: (4345, 5088),
-            8: (5089, 5832),
-            9: (5833, 6552),
-            10: (6553, 7296),
-            11: (7297, 8016),
-            12: (8017, 8760)
-        }
-        for month, hour_range in hours_per_month.items():
-            month_sum = values[hour_range[0] - 1:hour_range[1]].sum()
-            month_results.append(month_sum)
+        for month, hour_range in MONTH_HOUR_RANGES.items():
+            month_slice = values[hour_range[0] - 1:hour_range[1]]
+            month_results.append(month_slice)
         return month_results
 
+    def _aggregate(self, values: np.array, agg: str):
+        if agg == "sum":
+            return float(values.sum())
+        if agg == "mean":
+            return float(values.mean())
+        if agg == "min":
+            return float(values.min())
+        if agg == "max":
+            return float(values.max())
+        if agg == "last":
+            return float(values[-1])
+        if agg == "none":
+            return None
+        raise ValueError(f"Unsupported aggregation '{agg}'")
+
+    def _collect_one_variable(self, spec: "ResultVarSpec") -> None:
+        variable_name = spec.name
+        var_values = self.get_var_values(variable_name)
+        if len(var_values) != self.HOURS_PER_YEAR:
+            raise ValueError(
+                f"Unexpected length for result variable '{variable_name}': "
+                f"{len(var_values)} != {self.HOURS_PER_YEAR}"
+            )
+        self.hour_result[variable_name] = var_values
+        if spec.save_month and spec.agg_month != "none":
+            month_slices = self.convert_hour_to_month(var_values)
+            self.month_result[variable_name] = [self._aggregate(values=s, agg=spec.agg_month) for s in month_slices]
+        if spec.save_year and spec.agg_year != "none":
+            self.year_result[variable_name] = self._aggregate(values=var_values, agg=spec.agg_year)
+
     def collect_result(self):
-        for variable_name, variable_type in OperationResultVar.__dict__.items():
-            if not variable_name.startswith("_"):
-                var_values = self.get_var_values(variable_name)
-                # check if the load in the reference model has outliers which would indicate a problem:
-                # if variable_name == "Load" and self.get_hour_result_table_name() == OutputTables.OperationResult_RefHour.name:
-                #     self.check_hourly_results_for_outliers(var_values, variable_name)
-                self.hour_result[variable_name] = var_values
-                if variable_type == "hour&year":
-                    self.month_result[variable_name] = self.convert_hour_to_month(var_values)
-                    self.year_result[variable_name] = var_values.sum()
+        for spec in iter_operation_result_specs():
+            # check if the load in the reference model has outliers which would indicate a problem:
+            # if spec.name == "Load" and self.get_hour_result_table_name() == OutputTables.OperationResult_RefHour.name:
+            #     self.check_hourly_results_for_outliers(self.hour_result["Load"], "Load")
+            self._collect_one_variable(spec)
 
     def check_hourly_results_for_outliers(self, profile: np.array, var_name: str):
         """
         check the result for extreme outliers which indicates that something went wrong in the calculation
         using the IQR method
         """
+        from matplotlib import pyplot as plt
+
         Q1 = np.percentile(profile, 25)
         Q3 = np.percentile(profile, 75)
         IQR = Q3 - Q1
@@ -130,7 +150,7 @@ class OperationDataCollector(ABC):
                   f"in table {self.get_hour_result_table_name()}")
             self.logger.warning(f"Outlier detected in profile: {var_name} for scenario {self.scenario_id} "
                                 f"in table {self.get_hour_result_table_name()}")
-            plt.plot(np.arange(8760), profile)
+            plt.plot(np.arange(self.HOURS_PER_YEAR), profile)
             ax = plt.gca()
             plt.vlines(x=outlier_indices,
                        ymin=ax.get_ylim()[0], ymax=ax.get_ylim()[1],
@@ -146,23 +166,32 @@ class OperationDataCollector(ABC):
         :param frame: df that should be saved
         :return: DataFrame with reduced size
         """
-        float_cols = frame.select_dtypes(include='float').columns
-        frame[float_cols] = frame[float_cols].astype('float32')
-        frame = frame.apply(pd.to_numeric, downcast='integer')
+        float_cols = frame.select_dtypes(include=["float64", "float32"]).columns
+        if len(float_cols) > 0:
+            frame[float_cols] = frame[float_cols].astype("float32")
+        int_cols = frame.select_dtypes(include=["int64", "int32"]).columns
+        if len(int_cols) > 0:
+            frame[int_cols] = frame[int_cols].apply(pd.to_numeric, downcast="integer")
         return frame
 
     def save_hour_result(self):
         result_hour_df = pd.DataFrame(self.hour_result)
         result_hour_df.insert(loc=0, column="ID_Scenario", value=self.scenario_id)
-        result_hour_df.insert(loc=1, column="Hour", value=list(range(1, 8761)))
-        result_hour_df.insert(loc=2, column="DayHour", value=np.tile(np.arange(1, 25), 365))
+        result_hour_df.insert(loc=1, column="Hour", value=list(range(1, self.HOURS_PER_YEAR + 1)))
+        result_hour_df.insert(loc=2, column="DayHour", value=np.tile(np.arange(1, 25), self.HOURS_PER_YEAR // 24))
         if self.hour_vars:
-            result_hour_df = result_hour_df.loc[:, self.hour_vars]
+            base_columns = ["ID_Scenario", "Hour", "DayHour"]
+            requested_columns = [
+                col for col in self.hour_vars
+                if col in result_hour_df.columns and col not in base_columns
+            ]
+            result_hour_df = result_hour_df.loc[:, base_columns + requested_columns]
         df_to_save = self.reduce_df_size(result_hour_df)
-        write_parquet(
+        write_table(
             data_frame=df_to_save,
             file_name=self.get_hour_result_table_name() + f"_S{self.scenario_id}",
-            folder=self.output_folder
+            folder=self.output_folder,
+            file_format=self.hour_file_format,
         )
 
     def save_month_result(self):
@@ -170,9 +199,11 @@ class OperationDataCollector(ABC):
         result_month_df.insert(loc=0, column="ID_Scenario", value=self.scenario_id)
         result_month_df.insert(loc=1, column="Month", value=list(range(1, 13)))
         df_to_save = self.reduce_df_size(result_month_df)
-        self.db.write_dataframe(
-            table_name=self.get_month_result_table_name(),
-            data_frame=df_to_save
+        write_table(
+            data_frame=df_to_save,
+            file_name=self.get_month_result_table_name() + f"_S{self.scenario_id}",
+            folder=self.output_folder,
+            file_format=self.aggregate_file_format,
         )
 
     def save_year_result(self):
@@ -181,9 +212,11 @@ class OperationDataCollector(ABC):
         result_year_df.insert(loc=1, column="TotalCost", value=self.get_total_cost())
         df_to_save = self.reduce_df_size(result_year_df)
 
-        self.db.write_dataframe(
-            table_name=self.get_year_result_table_name(),
-            data_frame=df_to_save
+        write_table(
+            data_frame=df_to_save,
+            file_name=self.get_year_result_table_name() + f"_S{self.scenario_id}",
+            folder=self.output_folder,
+            file_format=self.aggregate_file_format,
         )
 
     def run(self):
@@ -199,7 +232,7 @@ class OperationDataCollector(ABC):
 class OptDataCollector(OperationDataCollector):
     def get_var_values(self, variable_name: str) -> np.array:
         var_values = np.array(
-            list(self.model.__dict__[variable_name].extract_values().values())
+            list(getattr(self.model, variable_name).extract_values().values())
         )
         return var_values
 
@@ -219,11 +252,11 @@ class OptDataCollector(OperationDataCollector):
 
 class RefDataCollector(OperationDataCollector):
     def get_var_values(self, variable_name: str) -> np.array:
-        var_values = np.array(self.model.__dict__[variable_name])
+        var_values = np.array(getattr(self.model, variable_name))
         return var_values
 
     def get_total_cost(self) -> float:
-        total_cost = self.model.__dict__["TotalCost"].sum()
+        total_cost = getattr(self.model, "TotalCost").sum()
         return total_cost
 
     def get_hour_result_table_name(self) -> str:
@@ -234,20 +267,3 @@ class RefDataCollector(OperationDataCollector):
 
     def get_year_result_table_name(self) -> str:
         return OutputTables.OperationResult_RefYear.name
-
-
-class LinopyDataCollector(OperationDataCollector):
-    def get_var_values(self, variable_name: str) -> np.array:
-        return np.array(self.model.__dict__[variable_name])
-
-    def get_total_cost(self) -> float:
-        return float(self.model.__dict__["total_cost"])
-
-    def get_hour_result_table_name(self) -> str:
-        return OutputTables.OperationResult_OptHour.name
-
-    def get_month_result_table_name(self) -> str:
-        return OutputTables.OperationResult_OptMonth.name
-
-    def get_year_result_table_name(self) -> str:
-        return OutputTables.OperationResult_OptYear.name

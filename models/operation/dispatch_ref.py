@@ -1,7 +1,9 @@
 import numpy as np
 import copy
 import logging
-from models.operation.model_base import OperationModel
+from models.operation.boiler import is_hp_boiler
+from models.operation.boiler import normalize_boiler_type
+from models.operation.physics_model import OperationModel
 
 
 class RefOperationModel(OperationModel):
@@ -9,16 +11,14 @@ class RefOperationModel(OperationModel):
     def solve(self):
         logger = logging.getLogger(f"{self.scenario.config.project_name}")
         logger.info(f"starting solving Ref model.")
-        if self.scenario.boiler.type in ["Air_HP", "Ground_HP", "Electric"]:
+        if is_hp_boiler(self.scenario.boiler.type):
             model_ref = self.run_heatpump_ref()
         else:
             model_ref = self.run_fuel_boiler_ref()
         logger.info(f"RefCost: {round(self.TotalCost.sum(), 2)}")
         return model_ref
 
-    """
-    Heat Pump REF
-    """
+    # --- Heat Pump REF ---
     def run_heatpump_ref(self):
         """
         Assumption for the Reference scenario: the produced PV power is always used for the immediate electric demand,
@@ -31,12 +31,16 @@ class RefOperationModel(OperationModel):
         self.calc_space_cooling_demand()
         self.calc_hot_water_demand()
         grid_demand, pv_surplus = self.calc_load()
-        grid_demand, pv_surplus = self.calc_battery_energy(grid_demand, pv_surplus)
-        grid_demand, pv_surplus = self.calculate_ev_energy(grid_demand, pv_surplus)
+        grid_demand, pv_surplus = self._run_shared_post_load_steps(grid_demand, pv_surplus)
         grid_demand, pv_surplus = self.calc_hot_water_tank_energy(grid_demand, pv_surplus)
         self.calc_grid(grid_demand, pv_surplus)
         self.set_boiler_parameters_to_zero()
         return self
+
+    def _run_shared_post_load_steps(self, grid_demand: np.ndarray, pv_surplus: np.ndarray):
+        grid_demand, pv_surplus = self.calc_battery_energy(grid_demand, pv_surplus)
+        grid_demand, pv_surplus = self.calculate_ev_energy(grid_demand, pv_surplus)
+        return grid_demand, pv_surplus
 
     def calc_space_heating_demand(self):
         hp_max = (self.SpaceHeating_MaxBoilerPower * self.SpaceHeatingHourlyCOP)
@@ -79,6 +83,60 @@ class RefOperationModel(OperationModel):
         """returns True if maximum power is exceeded"""
         # check if the maximal capacity of the heat pump is exceeded by charging the storage:
         return HP_power > self.SpaceHeating_MaxBoilerPower
+
+    def _apply_hp_power_cap(
+        self,
+        hour_idx: int,
+        grid_demand_after_hot_water_tank: np.ndarray,
+        cop_tank: np.ndarray,
+        stats: dict[str, float],
+    ) -> None:
+        """Enforce HP electric power cap by shifting DHW HP load to heating element when possible."""
+        hp_power = self.E_DHW_HP_out[hour_idx] + self.E_Heating_HP_out[hour_idx]
+        exceed_power = hp_power - self.SpaceHeating_MaxBoilerPower
+        if exceed_power <= 0:
+            return
+
+        stats["trigger_hours"] += 1
+        stats["max_exceed_power"] = max(stats["max_exceed_power"], float(exceed_power))
+
+        if self.HeatingElement_power <= 0 or self.HeatingElement_efficiency <= 0:
+            stats["unresolved_hours"] += 1
+            return
+
+        cop_tank_hour = float(cop_tank[hour_idx])
+        if cop_tank_hour <= 0:
+            stats["unresolved_hours"] += 1
+            return
+
+        # Shift as much as possible from DHW heat pump to heating element.
+        shift_hp_power = min(float(exceed_power), float(self.E_DHW_HP_out[hour_idx]))
+        if shift_hp_power <= 0:
+            stats["unresolved_hours"] += 1
+            return
+
+        shifted_thermal = shift_hp_power * cop_tank_hour
+        remaining_heating_element_thermal = max(
+            0.0, float(self.HeatingElement_power - self.Q_HeatingElement_heat[hour_idx])
+        )
+        shifted_thermal = min(shifted_thermal, remaining_heating_element_thermal)
+        if shifted_thermal <= 0:
+            stats["unresolved_hours"] += 1
+            return
+
+        actual_shift_hp_power = shifted_thermal / cop_tank_hour
+        self.E_DHW_HP_out[hour_idx] -= actual_shift_hp_power
+        self.Q_HeatingElement_DHW[hour_idx] += shifted_thermal
+
+        # Keep grid balance consistent with source shift from HP to heating element.
+        grid_demand_after_hot_water_tank[hour_idx] -= actual_shift_hp_power
+        grid_demand_after_hot_water_tank[hour_idx] += shifted_thermal / self.HeatingElement_efficiency
+
+        corrected_hp_power = self.E_DHW_HP_out[hour_idx] + self.E_Heating_HP_out[hour_idx]
+        if self.check_hp_max_power(corrected_hp_power):
+            stats["unresolved_hours"] += 1
+        else:
+            stats["resolved_hours"] += 1
 
     def calc_battery_energy(self, grid_demand: np.array, pv_surplus: np.array):
 
@@ -143,9 +201,8 @@ class RefOperationModel(OperationModel):
         return grid_demand_after_battery, pv_surplus_after_battery
 
     def calculate_ev_energy(self, grid_demand, pv_surplus):
-
-        self.EVDemandProfile = np.zeros(pv_surplus.shape)
-        self.EVAtHomeProfile = np.zeros(pv_surplus.shape)
+        ev_demand_profile = np.zeros(pv_surplus.shape)
+        ev_at_home_profile = np.zeros(pv_surplus.shape)
 
         self.EVSoC = np.zeros(pv_surplus.shape)
         self.EVCharge = np.zeros(pv_surplus.shape)
@@ -157,14 +214,14 @@ class RefOperationModel(OperationModel):
         self.Bat2EV = np.zeros(pv_surplus.shape)
 
         if self.scenario.vehicle.capacity > 0:
-            self.EVAtHomeProfile = np.array(self.scenario.behavior.vehicle_at_home, dtype=int)
+            ev_at_home_profile = np.array(self.scenario.behavior.vehicle_at_home, dtype=int)
 
             capacity = self.scenario.vehicle.capacity  # Wh
             max_charge_power = self.scenario.vehicle.charge_power_max  # W
             charge_efficiency = self.scenario.vehicle.charge_efficiency  # %
             discharge_efficiency = self.scenario.vehicle.discharge_efficiency  # %
-            self.EVDemandProfile = self.scenario.behavior.vehicle_demand
-            self.EVDischarge = self.EVDemandProfile / discharge_efficiency
+            ev_demand_profile = self.scenario.behavior.vehicle_demand
+            self.EVDischarge = ev_demand_profile / discharge_efficiency
 
             grid_demand_after_ev = np.copy(grid_demand)
             pv_surplus_after_ev = np.copy(pv_surplus)
@@ -176,7 +233,7 @@ class RefOperationModel(OperationModel):
                 else:
                     ev_soc_start = self.EVSoC[i - 1]
 
-                if self.EVAtHomeProfile[i] == 1 and ev_soc_start <= capacity:
+                if ev_at_home_profile[i] == 1 and ev_soc_start <= capacity:
 
                     charge_necessary = capacity - ev_soc_start
                     if charge_necessary <= max_charge_power:
@@ -207,6 +264,8 @@ class RefOperationModel(OperationModel):
             grid_demand_after_ev = grid_demand
             pv_surplus_after_ev = pv_surplus
 
+        self.EVDemandProfile = ev_demand_profile
+        self.EVAtHomeProfile = ev_at_home_profile
         return grid_demand_after_ev, pv_surplus_after_ev
 
     def calc_hot_water_tank_energy(self, grid_demand: np.array, pv_surplus: np.array):
@@ -220,7 +279,8 @@ class RefOperationModel(OperationModel):
         Returns: grid_demand_after_DHW, electricity_surplus_after_DHW
         """
         logger = logging.getLogger(f"{self.scenario.config.project_name}")
-        self.Q_DHWTank = np.ones(pv_surplus.shape) * self.scenario.hot_water_tank.temperature_min
+        tank_capacity = self.scenario.hot_water_tank.size * self.CPWater
+        self.Q_DHWTank = np.zeros(pv_surplus.shape)
         self.Q_DHWTank_out = np.zeros(pv_surplus.shape)
         self.Q_DHWTank_in = np.zeros(pv_surplus.shape)
         self.Q_HeatingElement_DHW = np.zeros(pv_surplus.shape)
@@ -244,6 +304,12 @@ class RefOperationModel(OperationModel):
             pv_surplus_after_hot_water_tank = np.copy(pv_surplus)
             tank_temperature = np.zeros(pv_surplus.shape)
             tank_loss = np.zeros(pv_surplus.shape)
+            hp_cap_stats = {
+                "trigger_hours": 0,
+                "resolved_hours": 0,
+                "unresolved_hours": 0,
+                "max_exceed_power": 0.0,
+            }
 
             for i in range(0, len(pv_surplus)):
 
@@ -338,39 +404,30 @@ class RefOperationModel(OperationModel):
                                 tank_temperature[i - 1] - (q_tank_out + tank_loss[i]) / tank_capacity
                             )
 
-                """
-                Removed temporally because we set the power of heating element to zero. 
-                However, with this code, the efficiency of heating element is still working.
-                """
-                # # check if the HP max power is exceeded due to additional load:
-                # hp_power = self.E_DHW_HP_out[i] + self.E_Heating_HP_out[i]
-                # if self.check_hp_max_power(hp_power):
-                #     if self.HeatingElement_power == 0:
-                #         logger.info(f"In scenario {self.scenario.scenario_id} the HP power is too low to maintain "
-                #                     f"indoor comfort level.")
-                #     else:
-                #         # if max power is exceeded check if reducing the DHW power will solve the problem:
-                #         if not self.check_hp_max_power(hp_power - self.E_DHW_HP_out[i]):
-                #             # the max HP power can be achieved by using the heating element for DHW
-                #             # hp DHW power is reduced by that amount:
-                #             exceeded_power = hp_power - self.SpaceHeating_MaxBoilerPower
-                #             self.E_DHW_HP_out[i] -= exceeded_power
-                #             # Heating element is used instead:
-                #             self.Q_HeatingElement_DHW[i] += exceeded_power * self.HeatingElement_efficiency
-                #             # grid load is decreased by HP power and increased by heating element power:
-                #             grid_demand_after_hot_water_tank[i] -= exceeded_power / cop_tank[i]
-                #             grid_demand_after_hot_water_tank[i] += exceeded_power / self.HeatingElement_efficiency
-                #
-                #         else:  # the HP power must also be reduced for heating and the indoor temperature can not be held:
-                #             logger.info(f"In scenario {self.scenario.scenario_id} the HP power is too low to maintain "
-                #                         f"indoor comfort level.")
+                self._apply_hp_power_cap(
+                    hour_idx=i,
+                    grid_demand_after_hot_water_tank=grid_demand_after_hot_water_tank,
+                    cop_tank=cop_tank,
+                    stats=hp_cap_stats,
+                )
 
             self.Q_DHWTank = (tank_temperature + 273.15) * tank_capacity
             self.PV2Load += (pv_surplus - pv_surplus_after_hot_water_tank)
+            if hp_cap_stats["trigger_hours"] > 0:
+                logger.info(
+                    "Scenario %s HP cap check (Ref DHW): triggered=%d resolved=%d unresolved=%d max_exceed_power=%.3f",
+                    self.scenario.scenario_id,
+                    hp_cap_stats["trigger_hours"],
+                    hp_cap_stats["resolved_hours"],
+                    hp_cap_stats["unresolved_hours"],
+                    hp_cap_stats["max_exceed_power"],
+                )
 
         else:
             grid_demand_after_hot_water_tank = grid_demand
             pv_surplus_after_hot_water_tank = pv_surplus
+            if tank_capacity > 0:
+                self.Q_DHWTank.fill(tank_capacity * (273.15 + self.scenario.hot_water_tank.temperature_min))
 
         self.Q_HeatingElement = self.Q_HeatingElement_heat + self.Q_HeatingElement_DHW
         return grid_demand_after_hot_water_tank, pv_surplus_after_hot_water_tank
@@ -388,17 +445,14 @@ class RefOperationModel(OperationModel):
         self.Q_DHW_Boiler_out = np.zeros(shape=self.Grid.shape)
         self.Q_Heating_Boiler_out = np.zeros(shape=self.Grid.shape)
 
-    """
-    Fuel Boiler REF
-    """
+    # --- Fuel Boiler REF ---
     def run_fuel_boiler_ref(self):
         self.calc_space_heating_demand_fuel_boiler()
         self.calc_space_cooling_demand()
         self.calc_hot_water_demand_fuel_boiler()
         self.calc_fuel_demand()
         grid_demand, pv_surplus = self.calc_load_fuel_boiler()
-        grid_demand, pv_surplus = self.calc_battery_energy(grid_demand, pv_surplus)
-        grid_demand, pv_surplus = self.calculate_ev_energy(grid_demand, pv_surplus)
+        grid_demand, pv_surplus = self._run_shared_post_load_steps(grid_demand, pv_surplus)
         self.Fuel = self.calc_hot_water_tank_energy_fuel_boiler(self.Fuel)
         self.calc_grid_fuel_boiler(grid_demand, pv_surplus)
         self.set_heat_pump_parameters_to_zero()
@@ -443,12 +497,14 @@ class RefOperationModel(OperationModel):
         Therefore, the charge into the DHW tank must be in accordance with demand + losses.
         Returns: grid_demand_after_DHW, electricity_surplus_after_DHW
         """
-        self.Q_DHWTank = np.ones(gas_demand.shape) * self.scenario.hot_water_tank.temperature_min
+        tank_capacity = self.scenario.hot_water_tank.size * self.CPWater
+        self.Q_DHWTank = np.zeros(gas_demand.shape)
         self.Q_DHWTank_out = np.zeros(gas_demand.shape)
         self.Q_DHWTank_in = np.zeros(gas_demand.shape)
         self.Q_HeatingElement_DHW = np.zeros(gas_demand.shape)
 
         if self.scenario.hot_water_tank.size > 0:
+            logger = logging.getLogger(f"{self.scenario.config.project_name}")
 
             # setup parameters
             hot_water_demand = self.HotWaterProfile
@@ -463,6 +519,7 @@ class RefOperationModel(OperationModel):
             gas_demand_after_hot_water_tank = np.copy(gas_demand)
             tank_temperature = np.zeros(gas_demand.shape)
             tank_loss = np.zeros(gas_demand.shape)
+            start_hour_below_min = False
 
             for i in range(0, len(gas_demand)):
 
@@ -474,14 +531,19 @@ class RefOperationModel(OperationModel):
                 tank_loss[i] = ((temp_start - surrounding_temperature) * surface_area * loss)  # W
 
                 if temp_start < temperature_min:
+                    if i == 0:
+                        start_hour_below_min = True
                     tank_in_necessary = (temperature_min - temp_start) * tank_capacity
                     q_tank_in = tank_in_necessary
                     gas_demand_after_hot_water_tank[i] += q_tank_in / self.fuel_boiler_efficiency
                     self.Q_DHWTank_in[i] = q_tank_in
                     self.Q_DHW_Boiler_out[i] += q_tank_in
-                    tank_temperature[i] = (
-                        tank_temperature[i - 1] + (q_tank_in - tank_loss[i]) / tank_capacity
-                    )
+                    if i == 0:
+                        tank_temperature[i] = temp_start + (q_tank_in - tank_loss[i]) / tank_capacity
+                    else:
+                        tank_temperature[i] = (
+                            tank_temperature[i - 1] + (q_tank_in - tank_loss[i]) / tank_capacity
+                        )
 
                 else:  # temperature is above minimum temperature in tank
                     tank_out_limit = (temp_start - temperature_min) * tank_capacity
@@ -489,6 +551,7 @@ class RefOperationModel(OperationModel):
                         q_tank_out = tank_out_limit
                     else:
                         q_tank_out = hot_water_demand[i]
+                    q_tank_out = max(0.0, min(q_tank_out, self.Q_DHWTank_bypass[i]))
                     self.Q_DHWTank_out[i] = q_tank_out
                     self.Q_DHWTank_bypass[i] -= q_tank_out
                     self.Q_DHW_Boiler_out[i] -= q_tank_out
@@ -499,10 +562,26 @@ class RefOperationModel(OperationModel):
                         tank_temperature[i] = (tank_temperature[i - 1] - (q_tank_out + tank_loss[i]) / tank_capacity)
 
             self.Q_DHWTank = (tank_temperature + 273.15) * tank_capacity
-            self.Q_DHWTank_bypass = self.Q_DHWTank_bypass.clip(min=0)  # TODO: for some unknown reason, for some scenarios, this line is necessary
+            negative_bypass_idx = np.where(self.Q_DHWTank_bypass < -1e-9)[0]
+            if start_hour_below_min or len(negative_bypass_idx) > 0:
+                min_bypass = float(np.min(self.Q_DHWTank_bypass))
+                first_neg = int(negative_bypass_idx[0] + 1) if len(negative_bypass_idx) > 0 else None
+                logger.warning(
+                    "DHW tank fuel-boiler diagnostics | scenario=%s | start_hour_below_min=%s | "
+                    "negative_bypass_count=%s | first_negative_hour=%s | min_bypass=%.6f",
+                    self.scenario.scenario_id,
+                    start_hour_below_min,
+                    int(len(negative_bypass_idx)),
+                    first_neg,
+                    min_bypass,
+                )
+            # Numerical guard: keep tiny negative roundoff from propagating.
+            self.Q_DHWTank_bypass = self.Q_DHWTank_bypass.clip(min=0)
 
         else:
             gas_demand_after_hot_water_tank = gas_demand
+            if tank_capacity > 0:
+                self.Q_DHWTank.fill(tank_capacity * (273.15 + self.scenario.hot_water_tank.temperature_min))
 
         self.Q_HeatingElement = self.Q_HeatingElement_heat + self.Q_HeatingElement_DHW
         return gas_demand_after_hot_water_tank
@@ -512,13 +591,11 @@ class RefOperationModel(OperationModel):
         self.Grid2Load = grid_demand
         self.PV2Grid = pv_surplus
         self.Feed2Grid = pv_surplus
-        self.FuelPrice = self.scenario.energy_price.__dict__[self.scenario.boiler.type]
+        fuel_carrier = normalize_boiler_type(self.scenario.boiler.type)
+        self.FuelPrice = getattr(self.scenario.energy_price, fuel_carrier)
         self.TotalCost = self.ElectricityPrice * grid_demand - pv_surplus * self.FiT + \
                          self.Fuel * self.FuelPrice
 
     def set_heat_pump_parameters_to_zero(self):
         self.E_Heating_HP_out = np.zeros(shape=self.Grid.shape)
         self.E_DHW_HP_out = np.zeros(shape=self.Grid.shape)
-
-
-
