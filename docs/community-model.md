@@ -16,13 +16,15 @@ The aggregator facilitates **peer-to-peer electricity trading** within the commu
 
 The calculation is purely arithmetic — no optimization involved:
 
-```
-community_pv_generation   = Σ household PV profiles
-community_load            = Σ household load profiles
-community_pv_consumption  = min(community_pv, community_load)   # consumed within community
-community_pv_self_consum  = Σ min(household_pv, household_load) # consumed by own household
-community_p2p_trading     = community_pv_consumption − community_pv_self_consumption
-```
+$$\text{PV}_{\text{comm},t} = \sum_{h} \text{PV}_{h,t}$$
+
+$$\text{Load}_{\text{comm},t} = \sum_{h} \text{Load}_{h,t}$$
+
+$$\text{PV}^{\text{consumed}}_t = \min\!\left(\text{PV}_{\text{comm},t},\; \text{Load}_{\text{comm},t}\right)$$
+
+$$\text{PV}^{\text{self}}_t = \sum_{h} \min\!\left(\text{PV}_{h,t},\; \text{Load}_{h,t}\right)$$
+
+$$\text{P2P}_t = \text{PV}^{\text{consumed}}_t - \text{PV}^{\text{self}}_t$$
 
 The P2P profit comes from the spread between what the aggregator charges households for community electricity (a fraction of the retail price) and what it pays them for their surplus PV (a fraction of the feed-in tariff). The buy/sell price factors are scenario parameters (`aggregator_buy_price_factor`, `aggregator_sell_price_factor`).
 
@@ -34,8 +36,11 @@ The aggregator operates a battery — either its own dedicated battery or, optio
 
 This is a Pyomo LP solved in `src/models/community/model.py`:
 
-* **Objective**: maximize `Σ_t (discharge[t] × η_discharge × sell_price[t] − charge[t] × buy_price[t])`
-* Where `buy_price = feed_in_tariff × buy_factor` and `sell_price = electricity_price × sell_factor`
+* **Objective**:
+
+$$\max \sum_{t=1}^{8760} \left( d_t \cdot \eta_{\text{dis}} \cdot p^{\text{sell}}_t \;-\; c_t \cdot p^{\text{buy}}_t \right)$$
+
+* Where $p^{\text{buy}}_t = \lambda^{\text{FiT}}_t \cdot f_{\text{buy}}$ and $p^{\text{sell}}_t = \lambda^{\text{elec}}_t \cdot f_{\text{sell}}$
 * Constraints: battery SoC dynamics, charge/discharge power limits, SoC upper bound
 
 The SoC upper bound depends on the `aggregator_household_battery_control` flag:

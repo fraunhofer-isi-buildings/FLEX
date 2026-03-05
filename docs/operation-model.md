@@ -17,7 +17,9 @@ Every scenario is run in both modes (unless disabled), and the comparison betwee
 * There is no lookahead, no price awareness.
 
 **Optimization mode** (`dispatch_opt.py`) simulates a household with a **Smart Energy Management System (SEMS)**. A Pyomo LP is solved for the full year simultaneously:
-* **Objective**: minimize total electricity cost = `Σ(grid_purchase × electricity_price) − Σ(feed_in × feed_in_tariff) + fuel_cost`
+* **Objective**: minimize total annual energy cost:
+
+$$\min \sum_{t=1}^{8760} \left( P^{\text{grid}}_t \cdot \lambda^{\text{elec}}_t \right) - \sum_{t=1}^{8760} \left( P^{\text{feed}}_t \cdot \lambda^{\text{FiT}}_t \right) + C_{\text{fuel}}$$
 * Flexible devices (battery, EV, thermal tanks, heat pump) are scheduled optimally given energy balance constraints, device capacity limits, and comfort bounds (room temperature, tank temperature).
 * The result represents the theoretical maximum value of full demand flexibility.
 

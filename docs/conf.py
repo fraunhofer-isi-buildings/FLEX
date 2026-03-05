@@ -5,6 +5,7 @@ release = "0.1"
 extensions = [
     "myst_parser",
     "sphinx_rtd_theme",
+    "sphinx.ext.mathjax",
 ]
 
 source_suffix = {
@@ -14,6 +15,7 @@ source_suffix = {
 myst_enable_extensions = [
     "colon_fence",
     "deflist",
+    "dollarmath",
 ]
 
 html_theme = "sphinx_rtd_theme"
