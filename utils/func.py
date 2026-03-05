@@ -46,10 +46,11 @@ def filter_df(df: pd.DataFrame, filter_dict: dict) -> pd.DataFrame:
 
 
 def filter_dataframe_dynamic(df, od_filter: "OrderedDict"):
-    while len(filter_df(df, od_filter)) == 0 and len(od_filter) > 1:
-        od_filter.popitem()
-    filtered_df = filter_df(df, od_filter)
-    return filtered_df
+    from collections import OrderedDict
+    od = OrderedDict(od_filter)  # work on a copy so the caller's dict is never mutated
+    while len(filter_df(df, od)) == 0 and len(od) > 1:
+        od.popitem()
+    return filter_df(df, od)
 
 
 def filter_df2s(df: pd.DataFrame, filter_dict: dict) -> pd.Series:
@@ -59,20 +60,15 @@ def filter_df2s(df: pd.DataFrame, filter_dict: dict) -> pd.Series:
 
 
 def dict_sample(options: Dict[Any, float]) -> Any:
-    value_sum = 0
-    for key in options.keys():
-        value_sum += options[key]
-    for key in options.keys():
-        options[key] = options[key] / value_sum
+    total = sum(options.values())
     rand = random.uniform(0, 1)
-    prob_accumulated = 0
-    option_chosen_key = None
-    for key in options.keys():
-        prob_accumulated += options[key]
-        if prob_accumulated >= rand:
-            option_chosen_key = key
-            break
-    return option_chosen_key
+    cumulative = 0.0
+    key = None
+    for key, weight in options.items():
+        cumulative += weight / total
+        if cumulative >= rand:
+            return key
+    return key  # fallback for floating-point edge case
 
 
 def timeslot2everything(timeslot: int):

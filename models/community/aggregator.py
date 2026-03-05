@@ -46,10 +46,9 @@ class Aggregator:
 
     def setup_objective(self, m):
         def calc_opt_profit(m):
-            opt_profit = 0
-            for t in m.t:
-                opt_profit += m.battery_discharge[t] * m.battery_discharge_efficiency * m.sell_price[t] - \
-                              m.battery_charge[t] * m.buy_price[t]
-            return opt_profit
+            return sum(
+                m.battery_discharge[t] * m.battery_discharge_efficiency * m.sell_price[t]
+                - m.battery_charge[t] * m.buy_price[t]
+                for t in m.t
+            )
         m.opt_profit_rule = pyo.Objective(rule=calc_opt_profit, sense=pyo.maximize)
-

@@ -21,6 +21,7 @@ class CommunityScenario:
         self.ref_operation_result_hour: Optional[pd.DataFrame] = None
         self.ref_operation_result_year: Optional[pd.DataFrame] = None
         self.operation_scenario_ids: Optional[List[int]] = None
+        self.hours: int = 8760
         self.region_code: Optional[str] = None
         self.year: Optional[int] = None
         self.aggregator_battery_size: Optional[float] = None
@@ -33,18 +34,39 @@ class CommunityScenario:
         self.id_electricity_feed_in: Optional[int] = None
         self.households: Optional[List["Household"]] = []
 
-    def setup(self):
+    def _validate_injected_dependencies(self):
+        required = {
+            "operation_scenario": self.operation_scenario,
+            "operation_scenario_ids": self.operation_scenario_ids,
+            "ref_operation_result_hour": self.ref_operation_result_hour,
+            "ref_operation_result_year": self.ref_operation_result_year,
+        }
+        missing = [k for k, v in required.items() if v is None]
+        if missing:
+            raise ValueError(
+                f"CommunityScenario {self.scenario_id} missing injected dependencies: {missing}"
+            )
+
+    def setup(self, battery_table: Optional[pd.DataFrame] = None):
+        self._validate_injected_dependencies()
         self.setup_scenario_params()
         self.setup_energy_price()
         self.setup_households()
-        self.setup_community_results()
+        self.setup_community_results(battery_table=battery_table)
 
     def setup_scenario_params(self):
         community_scenarios = self.db.read_dataframe(InputTables.CommunityScenario.name)
-        params_dict = community_scenarios.loc[community_scenarios["ID_Scenario"] == self.scenario_id].iloc[0].to_dict()
-        for key, value in params_dict.items():
-            if key in self.__dict__.keys():
-                self.__setattr__(key, value)
+        row = community_scenarios.loc[community_scenarios["ID_Scenario"] == self.scenario_id].iloc[0]
+        self.region_code = row["region_code"]
+        self.year = row["year"]
+        self.aggregator_battery_size = row["aggregator_battery_size"]
+        self.aggregator_battery_charge_efficiency = row["aggregator_battery_charge_efficiency"]
+        self.aggregator_battery_discharge_efficiency = row["aggregator_battery_discharge_efficiency"]
+        self.aggregator_household_battery_control = row["aggregator_household_battery_control"]
+        self.aggregator_buy_price_factor = row["aggregator_buy_price_factor"]
+        self.aggregator_sell_price_factor = row["aggregator_sell_price_factor"]
+        self.id_electricity = row["id_electricity"]
+        self.id_electricity_feed_in = row["id_electricity_feed_in"]
 
     def setup_energy_price(self):
         self.energy_prices = self.db.read_dataframe(InputTables.CommunityScenario_EnergyPrice.name)
@@ -52,6 +74,7 @@ class CommunityScenario:
         self.feed_in_price = self.energy_prices[f"electricity_feed_in_{self.id_electricity_feed_in}"].to_numpy()
 
     def setup_households(self):
+        self.households = []
         for id_scenario in self.operation_scenario_ids:
             household = Household(id_scenario)
             household.setup_component_ids(self.operation_scenario)
@@ -59,14 +82,13 @@ class CommunityScenario:
             household.setup_operation_result_year(self.ref_operation_result_year)
             self.households.append(household)
 
-    def setup_community_results(self):
-        self.hours = 8760
+    def setup_community_results(self, battery_table: Optional[pd.DataFrame] = None):
         self.setup_community_pv_generation()
         self.setup_community_load()
         self.setup_community_grid_balance()
         self.setup_community_pv_self_consumption()
         self.setup_community_p2p_trading()
-        self.setup_community_battery_size()
+        self.setup_community_battery_size(battery_table=battery_table)
 
     def setup_community_pv_generation(self):
         self.community_pv_generation = np.zeros(self.hours, )
@@ -79,38 +101,32 @@ class CommunityScenario:
             self.community_load += household.Load_hour
 
     def setup_community_grid_balance(self):
-        self.community_pv_consumption = np.zeros(self.hours, )
-        self.community_grid_consumption = np.zeros(self.hours, )
-        self.community_grid_feed = np.zeros(self.hours, )
-        for h in range(0, self.hours):
-            if self.community_pv_generation[h] <= self.community_load[h]:
-                self.community_pv_consumption[h] = self.community_pv_generation[h]
-                self.community_grid_consumption[h] = self.community_load[h] - self.community_pv_generation[h]
-                self.community_grid_feed[h] = 0
-            else:
-                self.community_pv_consumption[h] = self.community_load[h]
-                self.community_grid_consumption[h] = 0
-                self.community_grid_feed[h] = self.community_pv_generation[h] - self.community_load[h]
+        pv = self.community_pv_generation
+        load = self.community_load
+        self.community_pv_consumption = np.minimum(pv, load)
+        self.community_grid_consumption = np.maximum(load - pv, 0)
+        self.community_grid_feed = np.maximum(pv - load, 0)
 
     def setup_community_pv_self_consumption(self):
-        self.community_pv_self_consumption = np.zeros(self.hours, )
+        self.community_pv_self_consumption = np.zeros(self.hours,)
         for household in self.households:
-            household_pv_self_consumption = np.zeros(self.hours, )
-            for h in range(0, self.hours):
-                if household.PhotovoltaicProfile_hour[h] <= household.Load_hour[h]:
-                    household_pv_self_consumption[h] = household.PhotovoltaicProfile_hour[h]
-                else:
-                    household_pv_self_consumption[h] = household.Load_hour[h]
-            self.community_pv_self_consumption += household_pv_self_consumption
+            self.community_pv_self_consumption += np.minimum(
+                household.PhotovoltaicProfile_hour, household.Load_hour
+            )
 
     def setup_community_p2p_trading(self):
         self.community_p2p_trading = self.community_pv_consumption - self.community_pv_self_consumption
 
-    def setup_community_battery_size(self):
-        self.community_battery_size = np.zeros(self.hours, )
-        df = self.db.read_dataframe(InputTables.CommunityScenario_Component_Battery.name)
+    def setup_community_battery_size(self, battery_table: Optional[pd.DataFrame] = None):
+        self.community_battery_size = np.zeros(self.hours,)
+        df = (
+            battery_table
+            if battery_table is not None
+            else self.db.read_dataframe(InputTables.CommunityScenario_Component_Battery.name)
+        )
+        battery_capacity = df.set_index("ID_Battery")["capacity"].to_dict()
         for household in self.households:
-            household_battery_size = df.loc[df["ID_Battery"] == household.id_battery].iloc[0]["capacity"]
+            household_battery_size = battery_capacity[household.id_battery]
             self.community_battery_size += (household_battery_size - household.BatSoC_hour)
 
     def plot_community_grid(self):
@@ -131,7 +147,5 @@ class CommunityScenario:
                 fig_name=f"EnergyCommunityElectricityBalance_H{h1}To{h2}",
                 x_label="Hour",
                 y_label="Electricity Consumption (+) and Feed-in (-) (kWh)",
-                y_lim=(-2000, 2000)
             )
-
 

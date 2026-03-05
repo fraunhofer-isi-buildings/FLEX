@@ -1,7 +1,10 @@
 import os.path
+import random
 
+import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from models.behavior.constants import person_mark
 from models.behavior.household import Household
 from models.behavior.person import Person
 from models.behavior.scenario import BehaviorScenario
@@ -16,23 +19,30 @@ from utils.tables import OutputTables
 logger = get_logger(__name__)
 PERSON_SAMPLE_SIZE = 5
 HOUSEHOLD_SAMPLE_SIZE = 1
+DEFAULT_SEED = 42
 
 
-def gen_person_profiles(config: "Config"):
+def gen_person_profiles(
+    config: "Config",
+    seed: int = DEFAULT_SEED,
+    person_sample_size: int = PERSON_SAMPLE_SIZE,
+):
+    random.seed(seed)
+    np.random.seed(seed)
     person_profiles = {}
     db = create_db_conn(config)
     scenario = BehaviorScenario(config=config)
     scenario.setup_person_activity_data()
     person_scenarios = db.read_dataframe(InputTables.BehaviorScenario_Person.name)
     for index, row in tqdm(person_scenarios.iterrows(), total=len(person_scenarios), desc="generating person profiles"):
-        for sample in range(1, PERSON_SAMPLE_SIZE + 1):
+        for sample in range(1, person_sample_size + 1):
             person = Person(
                 scenario=scenario,
                 id_person_type=row["id_person_type"],
                 id_teleworking_type=row["id_teleworking_type"]
             )
             person.setup()
-            mark = f"p{person.id_person_type}t{person.id_teleworking_type}s{sample}"
+            mark = person_mark(person.id_person_type, person.id_teleworking_type, sample)
             person_profiles[f"activity_{mark}"] = person.activity_profile
             person_profiles[f"technology_{mark}"] = person.technology_profile
             person_profiles[f"appliance_electricity_{mark}"] = person.appliance_electricity_demand
@@ -45,14 +55,16 @@ def gen_person_profiles(config: "Config"):
         os.path.join(config.output, f'{OutputTables.BehaviorResult_PersonProfiles.name}.csv'),
         index=False
     )
-    db.write_dataframe(
-        table_name=OutputTables.BehaviorResult_PersonProfiles.name,
-        data_frame=person_profiles_df,
-        if_exists="replace"
-    )
 
 
-def gen_household_profiles(config: "Config"):
+def gen_household_profiles(
+    config: "Config",
+    seed: int = DEFAULT_SEED,
+    household_sample_size: int = HOUSEHOLD_SAMPLE_SIZE,
+    person_sample_size: int = PERSON_SAMPLE_SIZE,
+):
+    random.seed(seed)
+    np.random.seed(seed)
     household_profiles = {}
     db = create_db_conn(config)
     scenario = BehaviorScenario(config=config)
@@ -60,14 +72,14 @@ def gen_household_profiles(config: "Config"):
     household_scenarios = db.read_dataframe(InputTables.BehaviorScenario_Household.name)
     household_type_ids = household_scenarios["id_household_type"].unique()
     for id_household_type in tqdm(household_type_ids, total=len(household_type_ids), desc="generating household profiles"):
-        for sample in range(1, HOUSEHOLD_SAMPLE_SIZE + 1):
+        for sample in range(1, household_sample_size + 1):
             household = Household(
                 scenario=scenario,
                 id_household_type=id_household_type,
             )
             household.setup_household_members(
                 household_df=household_scenarios.loc[household_scenarios["id_household_type"] == id_household_type],
-                person_sample_size=PERSON_SAMPLE_SIZE
+                person_sample_size=person_sample_size
             )
             household.aggregate_household_member_profiles()
             household.add_lighting_electricity_demand()

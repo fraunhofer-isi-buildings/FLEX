@@ -25,6 +25,5 @@ def p2p_trading_amount(config: "Config", id_scenario: int):
         x_label="Month of the Year",
         y_label="P2P Trading Amount (kWh)",
         add_legend=False,
-        y_lim=(0, 16000),
     )
 

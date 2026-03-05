@@ -1,4 +1,5 @@
 import os
+import re
 from typing import List
 
 import pandas as pd
@@ -70,11 +71,15 @@ def copy_household_ref_hour(
         community_input_folder = os.path.join(project_dir, "input")
 
     if operation_scenario_ids is None:
-        operation_scenario_ids = sorted(
-            int(file_name.split("_S")[-1].split(".")[0])
-            for file_name in os.listdir(operation_output_folder)
-            if file_name.startswith(f"{OutputTables.OperationResult_RefHour.name}_S")
-        )
+        operation_scenario_ids = []
+        for file_name in os.listdir(operation_output_folder):
+            if not file_name.startswith(f"{OutputTables.OperationResult_RefHour.name}_S"):
+                continue
+            match = re.search(r"_S(\d+)\.", file_name)
+            if match is None:
+                continue
+            operation_scenario_ids.append(int(match.group(1)))
+        operation_scenario_ids = sorted(set(operation_scenario_ids))
 
     operation_ref_hour_profiles: List[pd.DataFrame] = []
     for id_operation_scenario in operation_scenario_ids:

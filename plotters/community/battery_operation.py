@@ -30,7 +30,6 @@ def battery_operation(config: "Config", id_scenario: int):
         fig_name=f"BatteryOperationByMonth_S{id_scenario}",
         x_label="Month of the Year",
         y_label="Battery Charge and Discharge Amount (MWh)",
-        y_lim=(-50, 50),
         x_tick_labels=["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"]
     )
 

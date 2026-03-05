@@ -31,12 +31,13 @@ class CommunityDataCollector:
 
     def run(self):
         self.collect_hour_result()
-        self.save_hour_result()
+        if self.save_hour:
+            self.save_hour_result()
         self.collect_year_result()
         self.save_year_result()
 
     def get_var_values(self, variable_name: str) -> np.array:
-        var_values = np.array(list(self.opt_instance.__dict__[variable_name].extract_values().values()))
+        var_values = np.array(list(getattr(self.opt_instance, variable_name).extract_values().values()))
         return var_values
 
     def collect_hour_result(self):
@@ -57,15 +58,15 @@ class CommunityDataCollector:
         self.db.write_dataframe(table_name=OutputTables.CommunityResult_AggregatorHour.name, data_frame=result_hour_df)
 
     def collect_year_result(self):
+        opt_profit = self.opt_instance.opt_profit_rule()
         self.year_result = {
             "p2p_profit": self.model.p2p_trading_profit,
-            "opt_profit": self.opt_instance.opt_profit_rule(),
-            "total_profit": self.model.p2p_trading_profit + self.opt_instance.opt_profit_rule()
+            "opt_profit": opt_profit,
+            "total_profit": self.model.p2p_trading_profit + opt_profit
         }
 
     def save_year_result(self):
         result_year_df = pd.DataFrame(self.year_result, index=[0])
         result_year_df.insert(loc=0, column="ID_Scenario", value=self.scenario_id)
         self.db.write_dataframe(table_name=OutputTables.CommunityResult_AggregatorYear.name, data_frame=result_year_df)
-
 

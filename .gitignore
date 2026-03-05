@@ -168,7 +168,9 @@ output/
 
 # But still ignore any output folders inside projects subfolders
 /projects/**/output/
+/projects/test_behavior/output_benchmark/
 /projects/test_operation/output_benchmark/
+/projects/test_community/output_benchmark/
 
 # Re-ignore everywhere (after re-include above)
 .DS_Store
@@ -176,3 +178,4 @@ __pycache__/
 
 # Local benchmark artifacts (keep across branch switches, do not track)
 /benchmark_artifacts/
+.claude

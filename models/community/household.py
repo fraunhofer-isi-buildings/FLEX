@@ -5,12 +5,28 @@ import pandas as pd
 
 from models.operation.component_registry import OperationScenarioComponent
 
+_COMPONENTS = [
+    OperationScenarioComponent.Building,
+    OperationScenarioComponent.Boiler,
+    OperationScenarioComponent.HeatingElement,
+    OperationScenarioComponent.SpaceHeatingTank,
+    OperationScenarioComponent.HotWaterTank,
+    OperationScenarioComponent.SpaceCoolingTechnology,
+    OperationScenarioComponent.PV,
+    OperationScenarioComponent.Battery,
+    OperationScenarioComponent.Vehicle,
+    OperationScenarioComponent.EnergyPrice,
+    OperationScenarioComponent.Behavior,
+]
+
+_HOUR_RESULT_FIELDS = ("PhotovoltaicProfile", "Grid", "Load", "Feed2Grid", "BatSoC")
+_YEAR_RESULT_FIELDS = ("TotalCost",)
+
 
 class Household:
 
     def __init__(self, operation_scenario_id):
         self.operation_scenario_id: int = operation_scenario_id
-        self.id_region: Optional[int] = None
         self.id_building: Optional[int] = None
         self.id_boiler: Optional[int] = None
         self.id_space_heating_tank: Optional[int] = None
@@ -32,30 +48,24 @@ class Household:
         self.TotalCost_year: Optional[float] = None
 
     def setup_component_ids(self, operation_scenario: pd.DataFrame):
-        component_scenario_ids: Dict[str, int] = operation_scenario.loc[operation_scenario["ID_Scenario"] ==
-                                                                        self.operation_scenario_id].iloc[0].to_dict()
-        del component_scenario_ids["ID_Scenario"]
-        for id_component, component_scenario_id in component_scenario_ids.items():
-            component_key = id_component.replace("ID_", "")
-            component_info = OperationScenarioComponent.__dict__.get(component_key)
-            if component_info is None:
+        row = operation_scenario.loc[operation_scenario["ID_Scenario"] == self.operation_scenario_id].iloc[0]
+        for component_info in _COMPONENTS:
+            attr = f"id_{component_info.name}"
+            if not hasattr(self, attr):
                 continue
-            if f'id_{component_info.name}' in self.__dict__.keys():
-                setattr(self, f'id_{component_info.name}', component_scenario_id)
+            if component_info.id_name in row.index:
+                setattr(self, attr, row[component_info.id_name])
 
     def setup_operation_result_hour(self, df: pd.DataFrame):
-        operation_result_hour: pd.DataFrame = df.loc[df["ID_Scenario"] == self.operation_scenario_id]
-        for key in self.__dict__.keys():
-            if key.endswith("_hour"):
-                key_remove_tail = key[:-5]
-                if key_remove_tail in operation_result_hour.columns:
-                    self.__setattr__(key, operation_result_hour[key_remove_tail].to_numpy())
+        operation_result_hour = df.loc[df["ID_Scenario"] == self.operation_scenario_id]
+        for field in _HOUR_RESULT_FIELDS:
+            if field in operation_result_hour.columns:
+                setattr(self, f"{field}_hour", operation_result_hour[field].to_numpy())
 
     def setup_operation_result_year(self, df: pd.DataFrame):
-        operation_result_year: Dict[str, float] = df.loc[df["ID_Scenario"] ==
-                                                         self.operation_scenario_id].iloc[0].to_dict()
-        for key in self.__dict__.keys():
-            if key.endswith("_year"):
-                key_remove_tail = key[:-5]
-                if key_remove_tail in operation_result_year.keys():
-                    self.__setattr__(key, operation_result_year[key_remove_tail])
+        operation_result_year: Dict[str, float] = (
+            df.loc[df["ID_Scenario"] == self.operation_scenario_id].iloc[0].to_dict()
+        )
+        for field in _YEAR_RESULT_FIELDS:
+            if field in operation_result_year:
+                setattr(self, f"{field}_year", operation_result_year[field])

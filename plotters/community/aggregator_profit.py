@@ -19,6 +19,5 @@ def aggregator_profit(config: "Config"):
         fig_name=f"AggregatorProfit-Battery",
         x_label="Battery Size (MWh)",
         y_label="Aggregator Profit (k€)",
-        y_lim=(0, 200),
         x_tick_labels=battery_sizes
     )

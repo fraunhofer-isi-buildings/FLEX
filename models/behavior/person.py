@@ -4,6 +4,11 @@ if TYPE_CHECKING:
     from models.behavior.scenario import BehaviorScenario
 
 from models.behavior.scenario import BehaviorScenario
+from models.behavior.constants import (
+    NON_WORKING_PERSON_TYPES,
+    WORKING_ACTIVITY_ID,
+    HOT_WATER_TECHNOLOGY_ID,
+)
 from utils.func import day2weekday
 
 
@@ -43,7 +48,7 @@ class Person:
                 id_person_type=self.id_person_type,
                 id_day_type=id_day_type
             )
-            if self.id_person_type in [3, 4] and id_activity_start == 11:
+            if self.id_person_type in NON_WORKING_PERSON_TYPES and id_activity_start == WORKING_ACTIVITY_ID:
                 id_activity_start = self.replace_activity_working(
                     id_day_type=id_day_type,
                     timeslot=1
@@ -64,7 +69,7 @@ class Person:
                     id_activity_before,
                     timeslot
                 )
-                if self.id_person_type in [3, 4] and id_activity_now == 11:
+                if self.id_person_type in NON_WORKING_PERSON_TYPES and id_activity_now == WORKING_ACTIVITY_ID:
                     id_activity_now = self.replace_activity_working(
                         id_day_type=id_day_type,
                         timeslot=timeslot
@@ -82,12 +87,12 @@ class Person:
 
     def setup_location_profile(self):
         for index, activity_id in enumerate(self.activity_profile):
-            if index % 24 == 0:  # start of new day
+            if index % 144 == 0:  # start of new day (index is a 10-min slot; 144 slots per day)
                 wfh_prob = self.scenario.teleworking_prob[self.id_teleworking_type]
                 work_location = 1 if random.uniform(0, 1) < wfh_prob else 0
             activity_location = self.scenario.activity_location[activity_id]
             if activity_location == 2:
-                if activity_id == 11:  # id_activity = 11 --> working
+                if activity_id == WORKING_ACTIVITY_ID:
                     activity_location = work_location
                 else:
                     activity_location = 0 if random.uniform(0, 1) <= 0.5 else 1
@@ -106,16 +111,14 @@ class Person:
                 # duration of technology ends with end of day (if longer)
                 tec_duration = len(self.activity_profile) - timeslot
 
-            if tec_duration > 1 and id_technology == self.technology_profile[-2]:
+            if tec_duration > 1 and len(self.technology_profile) >= 2 and id_technology == self.technology_profile[-2]:
                 technology_power = 0
             elif tec_duration < 1:
                 technology_power = technology_power * tec_duration
                 tec_duration = 1
-            else:
-                pass
 
             for idx in range(int(tec_duration)):
-                if id_technology == 23:  # hot water was triggered
+                if id_technology == HOT_WATER_TECHNOLOGY_ID:
                     self.hot_water_demand[timeslot + idx] += technology_power
                 else:
                     self.appliance_electricity_demand[timeslot + idx] += technology_power

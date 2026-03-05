@@ -1,9 +1,17 @@
-from typing import List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 import random
+import numpy as np
 import pandas as pd
 
 if TYPE_CHECKING:
     from models.behavior.scenario import BehaviorScenario
+
+from models.behavior.constants import (
+    LIGHTING_TECHNOLOGY_ID,
+    MODEM_TECHNOLOGY_ID,
+    REFRIGERATOR_TECHNOLOGY_ID,
+    person_mark,
+)
 
 
 class Household:
@@ -17,7 +25,7 @@ class Household:
         for index, row in household_df.iterrows():
             for _ in range(0, row["value"]):
                 self.household_members.append(
-                    f'p{row["id_person_type"]}t{row["id_teleworking_type"]}s{random.randint(1, person_sample_size)}'
+                    person_mark(row["id_person_type"], row["id_teleworking_type"], random.randint(1, person_sample_size))
                 )
 
     def aggregate_household_member_profiles(self):
@@ -25,45 +33,39 @@ class Household:
         self.hot_water_demand = self.aggregate_household_demand("hot_water")
         self.occupancy = self.aggregate_location()
 
-    def aggregate_household_demand(self, end_use: str) -> List[float]:
-        household_demand = [0] * 8760
+    def aggregate_household_demand(self, end_use: str) -> np.ndarray:
+        demand = np.zeros(8760)
         for member in self.household_members:
-            member_demand = self.scenario.person_profiles[f'{end_use}_{member}'].to_numpy()
-            for hour in range(0, 8760):
-                household_demand[hour] += member_demand[hour * 6:hour * 6 + 6].sum()/6
-        return household_demand
+            raw = self.scenario.person_profiles[f'{end_use}_{member}'].to_numpy()
+            demand += raw.reshape(8760, 6).mean(axis=1)
+        return demand
 
-    def aggregate_location(self) -> List[int]:
-        occupancy = [0] * 8760
-        for hour in range(0, 8760):
-            total_occupancy = 0
-            for member in self.household_members:
-                member_location = self.scenario.person_profiles[f'location_{member}'].to_numpy(dtype='float32')
-                total_occupancy += member_location[hour * 6:hour * 6 + 6].sum()/6
-            if total_occupancy > 0.5:
-                occupancy[hour] = 1
-        return occupancy
+    def aggregate_location(self) -> np.ndarray:
+        total_at_home = np.zeros(8760)
+        for member in self.household_members:
+            raw = self.scenario.person_profiles[f'location_{member}'].to_numpy(dtype='float32')
+            total_at_home += raw.reshape(8760, 6).mean(axis=1)
+        return (total_at_home > 0.5).astype(int)
 
     def add_lighting_electricity_demand(self):
-
-        def household_is_asleep(hour):
-            asleep = True
-            for member in self.household_members:
-                member_id_activity = self.scenario.person_profiles[f'activity_{member}'].to_numpy(dtype='float32')
-                if member_id_activity[hour * 6] != 1:
-                    asleep = False
-            return asleep
-
-        lighting_power = self.scenario.get_technology_power(36)
-        for hour in range(0, 8760):
-            if self.occupancy[hour] == 1 and hour % 24 > 15 and household_is_asleep(hour):
-                self.appliance_electricity_demand[hour] += lighting_power
+        lighting_power = self.scenario.get_technology_power(LIGHTING_TECHNOLOGY_ID)
+        # Pre-extract activity arrays to avoid repeated DataFrame column lookups per hour
+        activity_arrays = [
+            self.scenario.person_profiles[f'activity_{m}'].to_numpy(dtype='float32')
+            for m in self.household_members
+        ]
+        hours = np.arange(8760)
+        # All members asleep = activity at first 10-min slot of each hour equals 1 (sleep activity)
+        all_asleep = np.ones(8760, dtype=bool)
+        for arr in activity_arrays:
+            all_asleep &= (arr[hours * 6] == 1)
+        lighting_mask = (self.occupancy == 1) & (hours % 24 > 15) & all_asleep
+        self.appliance_electricity_demand[lighting_mask] += lighting_power
 
     def add_base_appliance_electricity_demand(self):
-        modem_power = self.scenario.get_technology_power(35)
-        refrigerator_power = self.scenario.get_technology_power(37)
-        for hour in range(0, 8760):
-            self.appliance_electricity_demand[hour] += (modem_power + refrigerator_power)
+        modem_power = self.scenario.get_technology_power(MODEM_TECHNOLOGY_ID)
+        refrigerator_power = self.scenario.get_technology_power(REFRIGERATOR_TECHNOLOGY_ID)
+        self.appliance_electricity_demand += (modem_power + refrigerator_power)
 
 
 

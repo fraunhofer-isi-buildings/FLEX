@@ -40,6 +40,12 @@ class BehaviorScenario:
         self.technology_duration = self.db.read_dataframe(InputTables.BehaviorParam_Technology_Duration.name)
         self.activities = self.db.read_dataframe(InputTables.BehaviorID_Activity.name)['name'].tolist()
         self.technologies = self.db.read_dataframe(InputTables.BehaviorID_Technology.name)['name'].tolist()
+        self.technology_power_map = dict(zip(
+            self.technology_power["id_technology"], self.technology_power["value"]
+        ))
+        self.technology_duration_map = dict(zip(
+            self.technology_duration["id_technology"], self.technology_duration["value"]
+        ))
 
     def setup_person_activity_data(self):
         self.setup_teleworking_prob()
@@ -64,13 +70,13 @@ class BehaviorScenario:
                     ("id_day_type", id_day_type),
                     ("id_person_type", id_person_type),
                 ])
-                df = self.filter_dataframe_dynamic(self.activity_tus_profile.copy(), od_filter=od)
+                df = func.filter_dataframe_dynamic(self.activity_tus_profile, od_filter=od)
                 for timeslot in range(1, 145):
-                    period_activities = df[f't{timeslot}'].to_numpy()
-                    d = {}
-                    for id_activity in range(1, 18):
-                        d[id_activity] = np.count_nonzero(period_activities == id_activity)
-                    self.period_most_common_activity[(id_person_type, id_day_type, timeslot)] = d
+                    period_activities = df[f't{timeslot}'].to_numpy(dtype=int)
+                    counts = np.bincount(period_activities, minlength=18)
+                    self.period_most_common_activity[(id_person_type, id_day_type, timeslot)] = {
+                        act: int(counts[act]) for act in range(1, 18)
+                    }
 
     def get_period_most_common_activity(self, id_person_type: int, id_day_type: int, timeslot: int):
         return int(func.dict_sample(self.period_most_common_activity[(id_person_type, id_day_type, timeslot)]))
@@ -83,7 +89,7 @@ class BehaviorScenario:
                     ("id_day_type", id_day_type),
                     ("id_person_type", id_person_type),
                 ])
-                df = self.filter_dataframe_dynamic(self.activity_start_prob.copy(), od_filter=od)
+                df = func.filter_dataframe_dynamic(self.activity_start_prob, od_filter=od)
                 d = {}
                 for index, row in df.iterrows():
                     d[row["id_activity"]] = row["probability"]
@@ -104,7 +110,7 @@ class BehaviorScenario:
                             ("id_day_type", id_day_type),
                             ("id_person_type", id_person_type),
                         ])  # these items are ranked from most to least important
-                        df = self.filter_dataframe_dynamic(self.activity_duration_prob.copy(), od)
+                        df = func.filter_dataframe_dynamic(self.activity_duration_prob, od)
                         d = {}
                         for index, row in df.iterrows():
                             d[row["duration"]] = row["probability"]
@@ -125,7 +131,7 @@ class BehaviorScenario:
                             ("id_day_type", id_day_type),
                             ("id_person_type", id_person_type),
                         ])  # these items are ranked from most to least important
-                        df = self.filter_dataframe_dynamic(self.activity_change_prob, od)
+                        df = func.filter_dataframe_dynamic(self.activity_change_prob, od)
                         d = {}
                         for index, row in df.iterrows():
                             d[row["id_activity_now"]] = row["probability"]
@@ -153,12 +159,10 @@ class BehaviorScenario:
             self.activity_location[row["id_activity"]] = row["id_location"]
 
     def get_technology_power(self, id_technology: int):
-        power = self.technology_power.loc[self.technology_power["id_technology"] == id_technology, ['value']]
-        return power.iloc[0, 0]
+        return self.technology_power_map[id_technology]
 
     def get_technology_duration(self, id_technology: int):
-        duration = self.technology_duration.loc[self.technology_duration["id_technology"] == id_technology, ['value']]
-        return duration.iloc[0, 0]
+        return self.technology_duration_map[id_technology]
 
     def load_person_profiles(self):
         # self.person_profiles = self.db.read_dataframe(OutputTables.BehaviorResult_PersonProfiles.name)
@@ -167,9 +171,3 @@ class BehaviorScenario:
         )
         return self.person_profiles
 
-    @staticmethod
-    def filter_dataframe_dynamic(df, od_filter: "OrderedDict"):
-        while len(func.filter_df(df, od_filter)) == 0 and len(od_filter) > 1:
-            od_filter.popitem()
-        filtered_df = func.filter_df(df, od_filter)
-        return filtered_df
