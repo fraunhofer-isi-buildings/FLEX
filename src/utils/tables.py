@@ -60,8 +60,6 @@ class OutputTables(Enum):
     OperationResult_RefHour = auto()
     OperationResult_RefMonth = auto()
     OperationResult_RefYear = auto()
-    OperationResult_EnergyCost = auto()
-    OperationResult_EnergyCostChange = auto()
     # FLEX-Community
     CommunityResult_AggregatorHour = auto()
     CommunityResult_AggregatorYear = auto()
