@@ -1,10 +1,16 @@
 # FLEX
 
+> **Note:** This repository is a fork of the [original FLEX repository](https://github.com/H2020-newTRENDs/FLEX), with further modifications for ongoing research. It is currently maintained by the **Climate-Neutral Buildings** group at [Fraunhofer ISI](https://www.isi.fraunhofer.de/).
+
+## Documentation
+
+Full documentation is available at **[flex-model.org](https://flex-model.org)**.
+
 ## Overview
 
 FLEX is a modeling suite for households' behavior, energy system operation, and interaction in the energy community.
-It is developed by 
-[Fraunhofer ISI](https://www.isi.fraunhofer.de/) and 
+It is developed by
+[Fraunhofer ISI](https://www.isi.fraunhofer.de/) and
 [TU Wien (Energy Economics Group)](https://eeg.tuwien.ac.at/)
 in the framework of the H2020 project [newTRENDs](https://newTRENDs2020.eu/).
 
@@ -31,12 +37,12 @@ To work with FLEX, please first follow the steps for installation
 
 1. Clone the repo to your local computer;
 2. Open the project and install the requirements with `pip install -r requirements.txt` in the terminal;
-3. Install a solver for the `FLEX-Operation` model (setup with [Pyomo](http://www.pyomo.org/)). 
-We suggest to use [gurobi](https://www.gurobi.com/), and if you would like to try other solvers, 
-we appreciate if you could inform us the experience. 
-In the `model_opt.py` file, you can switch to others solvers in `pyo.SolverFactory("gurobi")`.
+3. Install a solver for the `FLEX-Operation` model (setup with [Pyomo](http://www.pyomo.org/)).
+We suggest to use [gurobi](https://www.gurobi.com/), and if you would like to try other solvers,
+we appreciate if you could inform us the experience.
+The solver can be configured in `src/models/operation/solver.py`.
 
-In the "tests" folder, we created three examples using the three FLEX models. 
+In the `projects/` folder, we created example runs using the three FLEX models.
 They are good starting points for you to understand how to use the models.
 
 ## Citation
