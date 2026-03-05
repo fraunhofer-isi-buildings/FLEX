@@ -4,15 +4,15 @@ from typing import List
 
 import pandas as pd
 
-from models.community.main import run_community_model
-from plotters.community import aggregator_profit
-from plotters.community import p2p_trading_amount
-from plotters.community import battery_operation
-from utils.config import Config
-from utils.db import prepare_project_run
-from utils.file_store import read_table_smart
-from utils.tables import InputTables
-from utils.tables import OutputTables
+from src.models.community.main import run_community_model
+from src.plotters.community import aggregator_profit
+from src.plotters.community import p2p_trading_amount
+from src.plotters.community import battery_operation
+from src.utils.config import Config
+from src.utils.db import prepare_project_run
+from src.utils.file_store import read_table_smart
+from src.utils.tables import InputTables
+from src.utils.tables import OutputTables
 
 
 def copy_operation_tables(

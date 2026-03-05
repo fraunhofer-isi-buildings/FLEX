@@ -1,10 +1,10 @@
 import os
 
-from models.behavior.main import gen_household_profiles
-from models.behavior.main import gen_person_profiles
-from plotters.behavior.person_activity_share import person_activity_share
-from utils.config import Config
-from utils.db import prepare_project_run
+from src.models.behavior.main import gen_household_profiles
+from src.models.behavior.main import gen_person_profiles
+from src.plotters.behavior.person_activity_share import person_activity_share
+from src.utils.config import Config
+from src.utils.db import prepare_project_run
 
 
 def run_flex_behavior_model(project_name: str):

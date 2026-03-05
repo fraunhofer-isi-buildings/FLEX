@@ -1,9 +1,9 @@
 import os
 
-from models.operation.main import run_operation_model
-from plotters.operation import household_load_balance
-from utils.config import Config
-from utils.db import prepare_project_run
+from src.models.operation.main import run_operation_model
+from src.plotters.operation import household_load_balance
+from src.utils.config import Config
+from src.utils.db import prepare_project_run
 
 
 def get_config(project_name: str):
