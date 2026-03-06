@@ -40,7 +40,8 @@ To work with FLEX, please first follow the steps for installation
 3. Install a solver for the `FLEX-Operation` model (setup with [Pyomo](http://www.pyomo.org/)).
 We suggest to use [gurobi](https://www.gurobi.com/), and if you would like to try other solvers,
 we appreciate if you could inform us the experience.
-The solver can be configured in `src/models/operation/solver.py`.
+The solver is configured via the `FLEX_OPERATION_SOLVER` environment variable (default: `gurobi`).
+See the [Configuration](https://flex-model.org/configuration.html) page for details.
 
 In the `projects/` folder, we created example runs using the three FLEX models.
 They are good starting points for you to understand how to use the models.
@@ -60,7 +61,7 @@ Modeling households’ behavior, energy system operation, and interaction in the
 * Thomas Haupt (2021). Prosuming, Demand Response and Technological Flexibility: an Integrated Optimization Model for Households' Energy Consumption Behavior. Thesis for Master of Science. Hochschule Ulm.
 
 
-## Lisence
+## License
 
 As mentioned, FLEX is developed by 
 [Fraunhofer ISI](https://www.isi.fraunhofer.de/) and 

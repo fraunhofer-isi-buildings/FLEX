@@ -16,9 +16,7 @@ The aggregator facilitates **peer-to-peer electricity trading** within the commu
 
 The calculation is purely arithmetic — no optimization involved:
 
-$$\text{PV}_{\text{comm},t} = \sum_{h} \text{PV}_{h,t}$$
-
-$$\text{Load}_{\text{comm},t} = \sum_{h} \text{Load}_{h,t}$$
+$$\text{PV}_{\text{comm},t} = \sum_{h} \text{PV}_{h,t}, \qquad \text{Load}_{\text{comm},t} = \sum_{h} \text{Load}_{h,t}$$
 
 $$\text{PV}^{\text{consumed}}_t = \min\!\left(\text{PV}_{\text{comm},t},\; \text{Load}_{\text{comm},t}\right)$$
 
@@ -26,9 +24,17 @@ $$\text{PV}^{\text{self}}_t = \sum_{h} \min\!\left(\text{PV}_{h,t},\; \text{Load
 
 $$\text{P2P}_t = \text{PV}^{\text{consumed}}_t - \text{PV}^{\text{self}}_t$$
 
-The P2P profit comes from the spread between what the aggregator charges households for community electricity (a fraction of the retail price) and what it pays them for their surplus PV (a fraction of the feed-in tariff). The buy/sell price factors are scenario parameters (`aggregator_buy_price_factor`, `aggregator_sell_price_factor`).
+where $\text{PV}_{h,t}$ and $\text{Load}_{h,t}$ are the PV generation and electrical load of household $h$ at hour $t$ (from Ref results), $\text{PV}^{\text{consumed}}_t$ is the total community PV that can be consumed locally, $\text{PV}^{\text{self}}_t$ is the PV already consumed within each household, and $\text{P2P}_t$ is the additional PV consumption enabled by peer-to-peer trading.
 
-This calculation is in `src/models/community/scenario.py`.
+The P2P profit comes from the spread between what the aggregator charges households for community electricity and what it pays them for their surplus PV:
+
+$$p^{\text{sell}}_t = \lambda^{\text{elec}}_t \cdot f_{\text{sell}}, \qquad p^{\text{buy}}_t = \lambda^{\text{FiT}}_t \cdot f_{\text{buy}}$$
+
+$$\text{P2P profit} = \sum_{t=1}^{8760} \text{P2P}_t \cdot \left( p^{\text{sell}}_t - p^{\text{buy}}_t \right)$$
+
+where $\lambda^{\text{elec}}_t$ is the retail electricity price, $\lambda^{\text{FiT}}_t$ is the feed-in tariff, and $f_{\text{sell}}$, $f_{\text{buy}}$ are the aggregator's price factors (configured in `CommunityScenario`). Note that the sell and buy prices are based on **different** base prices (retail vs. feed-in).
+
+This calculation is in `src/models/community/scenario.py` and `src/models/community/model.py`.
 
 ### 2. Aggregator Battery Optimization Profit (LP)
 
@@ -36,29 +42,43 @@ The aggregator operates a battery — either its own dedicated battery or, optio
 
 This is a Pyomo LP solved in `src/models/community/model.py`:
 
-* **Objective**:
+**Objective** — maximize arbitrage profit:
 
-$$\max \sum_{t=1}^{8760} \left( d_t \cdot \eta_{\text{dis}} \cdot p^{\text{sell}}_t \;-\; c_t \cdot p^{\text{buy}}_t \right)$$
+$$\max \sum_{t=1}^{8760} \left( d_t \cdot \eta_d \cdot p^{\text{sell}}_t - c_t \cdot p^{\text{buy}}_t \right)$$
 
-* Where $p^{\text{buy}}_t = \lambda^{\text{FiT}}_t \cdot f_{\text{buy}}$ and $p^{\text{sell}}_t = \lambda^{\text{elec}}_t \cdot f_{\text{sell}}$
-* Constraints: battery SoC dynamics, charge/discharge power limits, SoC upper bound
+where:
+
+* $c_t$ — battery charge at hour $t$ [kWh]
+* $d_t$ — battery discharge at hour $t$ [kWh]
+* $\eta_d$ — discharge efficiency (revenue is based on energy delivered after losses)
+* $p^{\text{sell}}_t$, $p^{\text{buy}}_t$ — sell and buy prices as defined above
+
+**Constraints:**
+
+* **SoC dynamics:** $s_t = s_{t-1} + c_t \cdot \eta_c - d_t$, with $s_0 = 0$ and $\eta_c$ being the charge efficiency
+* **Charge upper bound:** $c_t \leq F^{\text{feed}}_t$ — cannot charge more than the community's net PV surplus at hour $t$
+* **Discharge upper bound:** $d_t \leq F^{\text{cons}}_t$ — cannot discharge more than the community's net load deficit at hour $t$
+* **SoC upper bound:** depends on the control mode (see below)
+
+where $F^{\text{feed}}_t = \sum_h \text{Feed2Grid}_{h,t}$ and $F^{\text{cons}}_t = \sum_h \text{Grid}_{h,t}$ are the community-level hourly grid feed-in and consumption, computed from the household Ref results.
 
 The SoC upper bound depends on the `aggregator_household_battery_control` flag:
-* `ctrl = 0`: aggregator operates only its own dedicated battery.
-* `ctrl = 1`: aggregator also controls household batteries — available capacity is the aggregator battery plus the unused capacity across all household batteries (`battery_capacity − household_BatSoC`).
+
+* $\text{ctrl} = 0$: aggregator operates only its own dedicated battery. $s_t \leq S_{\text{agg}}$ (constant).
+* $\text{ctrl} = 1$: aggregator also controls household batteries. $s_t \leq S_{\text{agg}} + \sum_h (C^{\text{bat}}_h - \text{BatSoC}_{h,t})$, where $C^{\text{bat}}_h$ is the battery capacity of household $h$ and $\text{BatSoC}_{h,t}$ is its SoC from the Ref run (hourly-varying upper bound).
 
 ## Inputs
 
-The community model reads operation results that have been pre-exported into community input tables (the `projects/test_community/main.py` helper function `copy_operation_tables` handles this):
+The community model reads operation results that have been pre-exported into community input tables (the `projects/test_community/main.py` helper functions `copy_operation_tables()` and `copy_household_ref_hour()` handle this):
 
 | Table | Content |
 |---|---|
-| `CommunityScenario` | Community scenario parameters (battery size, price factors, control mode) |
+| `CommunityScenario` | Community scenario parameters (battery size, charge/discharge efficiency, price factors, control mode, price column IDs) |
 | `CommunityScenario_OperationScenario` | Operation scenario table copied from FLEX-Operation input |
-| `CommunityScenario_Household_RefHour` | Hourly Ref results for all household scenarios: `PhotovoltaicProfile`, `Grid`, `Load`, `Feed2Grid`, `BatSoC` |
+| `CommunityScenario_Household_RefHour` | Hourly Ref results for all household scenarios — only 5 columns: `PhotovoltaicProfile`, `Grid`, `Load`, `Feed2Grid`, `BatSoC` |
 | `CommunityScenario_Household_RefYear` | Annual Ref results: `TotalCost` per household scenario |
 | `CommunityScenario_EnergyPrice` | Community-level electricity and feed-in price time series |
-| `CommunityScenario_Component_Battery` | Battery capacity table (maps `ID_Battery` to capacity in Wh) |
+| `CommunityScenario_Component_Battery` | Battery parameter table (maps `ID_Battery` to capacity and efficiency) |
 
 ## Outputs
 
@@ -73,7 +93,7 @@ The community model reads operation results that have been pre-exported into com
 |---|---|
 | `src/models/community/main.py` | Entry point — `run_community_model()` |
 | `src/models/community/scenario.py` | Community scenario setup; P2P trading calculation |
-| `src/models/community/model.py` | Aggregator LP: configures parameters, solves, extracts result |
+| `src/models/community/model.py` | Aggregator P2P profit calculation; LP configuration, solving, result extraction |
 | `src/models/community/aggregator.py` | Pyomo model definition: sets, variables, constraints, objective |
 | `src/models/community/household.py` | Maps operation result rows to per-household objects |
 | `src/models/community/data_collector.py` | Collects hourly and annual results and writes to output |

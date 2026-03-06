@@ -18,6 +18,8 @@ FLEX models residential energy systems across three levels of abstraction, each 
 **How the modules connect.** Each module's output becomes part of the next module's input:
 
 * **Behavior → Operation**: `BehaviorResult_HouseholdProfiles` provides hourly appliance electricity demand, hot water demand, and occupancy, which FLEX-Operation reads as behavioral input when coupling is enabled.
-* **Operation → Community**: `OperationResult_RefHour_S{id}` provides hourly PV generation, grid import/export, load, and battery SoC per household scenario. `OperationResult_RefYear_S{id}` provides the corresponding annual cost. FLEX-Community reads only Ref mode outputs — it never re-runs household simulation, only aggregates and optimizes on top of already-computed results.
+* **Operation → Community**: FLEX-Community reads **only Ref mode** outputs from FLEX-Operation — it never re-runs household simulation, only aggregates and optimizes on top of already-computed results. Specifically, it uses:
+  * From `OperationResult_RefHour_S{id}`: 5 columns — `PhotovoltaicProfile`, `Grid`, `Load`, `Feed2Grid`, `BatSoC`
+  * From `OperationResult_RefYear_S{id}`: `TotalCost`
 
 All table names are defined as enums in `src/utils/tables.py`. Hourly result tables are stored as parquet files; monthly and annual summaries as CSV.

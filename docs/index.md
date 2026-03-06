@@ -10,11 +10,9 @@ model-architecture
 behavior-model
 operation-model
 community-model
+
+configuration
 ```
-
-Given how capable modern AI coding tools have become, this documentation focuses on **the information that matters most**: the overall model logic, the key data flows between modules, and the entry points you need to navigate the codebase. It is intentionally not exhaustive.
-
-The recommended workflow is: read the relevant doc page to build the right mental model, then explore the code directly — with an AI assistant alongside to answer questions as they come up.
 
 ## Quick Start
 
@@ -30,7 +28,6 @@ python -m projects.test_behavior.main
 python -m projects.test_operation.main
 python -m projects.test_community.main
 ```
-
 
 ## Repository Layout
 
@@ -79,7 +76,7 @@ FLEX_cnb/
 │   │   └── community/p2p_trading_amount.py
 │   └── utils/
 │       ├── config.py                           # Project path and config management
-│       ├── db.py                               # SQLite-based I/O and project initialization
+│       ├── db.py                               # File-based I/O and project initialization
 │       ├── file_store.py                       # Unified table read/write (parquet / CSV / Excel)
 │       ├── func.py                             # General utility functions
 │       ├── parquet.py                          # Parquet read/write helpers
