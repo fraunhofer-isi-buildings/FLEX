@@ -43,7 +43,10 @@ where:
 
 The tie-break term adds tiny penalties on storage throughput and heating element use to prevent degenerate LP solutions:
 
-$$\varepsilon_t = \epsilon_1 (\text{BatCharge}_t + \text{BatDischarge}_t) + \epsilon_2 (\text{EVCharge}_t + \text{EVDischarge}_t) + \epsilon_3 (\text{Bat2EV}_t + \text{EV2Bat}_t) + \epsilon_4 \, Q^{\text{HE}}_t + \epsilon_5 \sum Q^{\text{tank}}_t$$
+$$\begin{aligned}
+\varepsilon_t = \;&\epsilon_1 (\text{BatCharge}_t + \text{BatDischarge}_t) + \epsilon_2 (\text{EVCharge}_t + \text{EVDischarge}_t) \\
+              +\;&\epsilon_3 (\text{Bat2EV}_t + \text{EV2Bat}_t) + \epsilon_4 \, Q^{\text{HE}}_t + \epsilon_5 \sum Q^{\text{tank}}_t
+\end{aligned}$$
 
 with $\epsilon_1 = 10^{-6}$, $\epsilon_2 = 9 \times 10^{-7}$, $\epsilon_3 = 7 \times 10^{-7}$, $\epsilon_4 = 5 \times 10^{-7}$, $\epsilon_5 = 3 \times 10^{-7}$. These values are small enough to never override energy cost decisions.
 
