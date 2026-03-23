@@ -179,3 +179,11 @@ __pycache__/
 # Local benchmark artifacts (keep across branch switches, do not track)
 /benchmark_artifacts/
 .claude
+
+# Slidev / Node.js
+node_modules/
+docs/slides/dist/
+docs/slides/.slidev/
+docs/slides/components.d.ts
+!/docs/slides/public/**
+docs/documentation/_build
